@@ -1,0 +1,7 @@
+composer.phar
+.idea/
+.vscode/
+/coverage/
+/vendor/
+.phpunit.result.cache
+/bin/watchr.phar

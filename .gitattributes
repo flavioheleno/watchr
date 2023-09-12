@@ -1,0 +1,12 @@
+.editorconfig export-ignore
+.gitattributes export-ignore
+.github/ export-ignore
+.gitignore export-ignore
+infection.json.dist export-ignore
+phpunit.xml.dist export-ignore
+psaml.xml.dist export-ignore
+ruleset.xml.dist export-ignore
+tests/ export-ignore
+
+# Auto detect text files and perform LF normalization
+* text=auto
