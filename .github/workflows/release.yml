@@ -1,0 +1,62 @@
+name: Project Release
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+
+      - name: Setup PHP 8.2 with PHIVE
+        uses: shivammathur/setup-php@4bd44f22a98a19e0950cbad5f31095157cc9621b
+        with:
+          php-version: '8.2'
+          ini-values: phar.readonly=0
+          coverage: none
+          tools: phive, composer:v2
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@83af392bf5f031813d25e6fe4cd626cdba9a2df6
+
+      - name: Build PHAR
+        run: |
+          phive --no-progress install --trust-gpg-keys 2DF45277AEF09A2F humbug/box
+          phive status
+          ./tools/box compile
+          sha512sum bin/watchr.phar > bin/watchr.phar.sha512
+
+      - name: Check that the PHAR works
+        run: bin/watchr.phar --ansi --version
+
+      - name: Import GPG Key
+        uses: crazy-max/ghaction-import-gpg@72b6676b71ab476b77e676928516f6982eef7a41
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Sign PHAR
+        run: >
+          gpg
+          --local-user flaviohbatista@gmail.com
+          --passphrase ${{ secrets.GPG_PASSPHRASE }}
+          --detach-sign
+          --output bin/watchr.phar.asc
+          bin/watchr.phar
+
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844
+        with:
+          draft: true
+          body: TODO
+          files: |
+            bin/watchr.phar
+            bin/watchr.phar.sha512
+            bin/watchr.phar.asc
