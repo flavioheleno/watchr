@@ -228,9 +228,16 @@ final class CheckCertificateCommand extends Command {
       curl_setopt($hCurl, CURLOPT_NOBODY, true);
       curl_setopt($hCurl, CURLOPT_CERTINFO, true);
       curl_exec($hCurl);
-      curl_close($hCurl);
+      if (curl_errno($hCurl) > 0) {
+        $curlError = curl_error($hCurl);
+        curl_close($hCurl);
+
+        throw new RuntimeException($curlError);
+      }
 
       $certInfo = curl_getinfo($hCurl, CURLINFO_CERTINFO);
+      curl_close($hCurl);
+
       if ($certInfo === false || $certInfo === []) {
         throw new RuntimeException(
           sprintf(
@@ -457,6 +464,14 @@ final class CheckCertificateCommand extends Command {
         curl_setopt($hCurl, CURLOPT_SAFE_UPLOAD, true);
         curl_setopt($hCurl, CURLOPT_POSTFIELDS, $requestBody);
         $result = curl_exec($hCurl);
+        if (curl_errno($hCurl) > 0) {
+          $curlError = curl_error($hCurl);
+          curl_close($hCurl);
+
+          throw new RuntimeException($curlError);
+        }
+
+
         curl_close($hCurl);
 
         $info = curl_getinfo($hCurl);
