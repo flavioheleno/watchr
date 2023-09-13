@@ -5,6 +5,7 @@ namespace Watchr\Console\Commands\Check;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Exception;
 use Iodev\Whois\Whois;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -167,132 +168,143 @@ final class CheckDomainCommand extends Command {
       OutputInterface::VERBOSITY_DEBUG
     );
 
-    $info = $this->whois->loadDomainInfo($domain);
+    try {
+      $info = $this->whois->loadDomainInfo($domain);
 
-    if ($checks['domainExpirationDate'] === true) {
-      if ($info->expirationDate === 0) {
-        $errors[] = sprintf(
-          'Failed to retrieve the expiration date for domain "%s"',
-          $domain
+      if ($checks['domainExpirationDate'] === true) {
+        if ($info->expirationDate === 0) {
+          $errors[] = sprintf(
+            'Failed to retrieve the expiration date for domain "%s"',
+            $domain
+          );
+
+          if ($failFast === true) {
+            return Command::FAILURE;
+          }
+        }
+
+        $expiresAt = (new DateTimeImmutable())->setTimestamp($info->expirationDate);
+        $output->writeln(
+          sprintf(
+            'Domain expiration date: <options=bold>%s</> (%d)',
+            $expiresAt->format(DateTimeInterface::ATOM),
+            $info->expirationDate
+          ),
+          OutputInterface::VERBOSITY_DEBUG
         );
 
-        if ($failFast === true) {
-          return Command::FAILURE;
+        $interval = $now->diff($expiresAt);
+        if ($interval->days <= 0) {
+          $errors[] = sprintf(
+            'Domain "%s" expired %s ago',
+            $domain,
+            DateUtils::timeAgo($interval)
+          );
+
+          if ($failFast === true) {
+            $this->printErrors($errors, $output);
+
+            return Command::FAILURE;
+          }
+        }
+
+        if ($interval->days <= $domainExpirationThreshold) {
+          $errors[] = sprintf(
+            'Domain "%s" will expire in %d days (threshold: %d)',
+            $domain,
+            $interval->days,
+            $domainExpirationThreshold
+          );
+
+          if ($failFast === true) {
+            $this->printErrors($errors, $output);
+
+            return Command::FAILURE;
+          }
+        }
+
+        $output->writeln(
+          sprintf(
+            'Domain expires in: <options=bold>%d days</>',
+            $interval->days
+          ),
+          OutputInterface::VERBOSITY_DEBUG
+        );
+      }
+
+      if ($checks['domainRegistrarName'] === true) {
+        if ($info->registrar === '') {
+          $errors[] = sprintf(
+            'Failed to retrieve the registrar name for domain "%s"',
+            $domain
+          );
+
+          if ($failFast === true) {
+            $this->printErrors($errors, $output);
+
+            return Command::FAILURE;
+          }
+        }
+
+        $output->writeln(
+          sprintf(
+            'Registrar name: <options=bold>%s</>',
+            $info->registrar
+          ),
+          OutputInterface::VERBOSITY_DEBUG
+        );
+
+        if ($info->registrar !== $registrarName) {
+          $errors[] = sprintf(
+            'Registrar name for domain "%s" does not match the expected "%s", found: "%s"',
+            $domain,
+            $registrarName,
+            $info->registrar
+          );
+
+          if ($failFast === true) {
+            $this->printErrors($errors, $output);
+
+            return Command::FAILURE;
+          }
         }
       }
 
-      $expiresAt = (new DateTimeImmutable())->setTimestamp($info->expirationDate);
-      $output->writeln(
-        sprintf(
-          'Domain expiration date: <options=bold>%s</> (%d)',
-          $expiresAt->format(DateTimeInterface::ATOM),
-          $info->expirationDate
-        ),
-        OutputInterface::VERBOSITY_DEBUG
-      );
+      if ($checks['domainTransferProhibited'] === true) {
+        if ($info->states === []) {
+          $errors[] = sprintf(
+            'Failed to retrieve the status for domain "%s"',
+            $domain
+          );
 
-      $interval = $now->diff($expiresAt);
-      if ($interval->days <= 0) {
-        $errors[] = sprintf(
-          'Domain "%s" expired %s ago',
-          $domain,
-          DateUtils::timeAgo($interval)
-        );
+          if ($failFast === true) {
+            $this->printErrors($errors, $output);
 
-        if ($failFast === true) {
-          $this->printErrors($errors, $output);
+            return Command::FAILURE;
+          }
+        }
 
-          return Command::FAILURE;
+        if (in_array('clienttransferprohibited', $info->states, true) === false) {
+          $errors[] = sprintf(
+            'Domain "%s" does not have the "clientTransferProhibited" status activated (active: %s)',
+            $domain,
+            implode(', ', $info->states)
+          );
+
+          if ($failFast === true) {
+            $this->printErrors($errors, $output);
+
+            return Command::FAILURE;
+          }
         }
       }
+    } catch (Exception $exception) {
+      $errors[] = $exception->getMessage();
 
-      if ($interval->days <= $domainExpirationThreshold) {
-        $errors[] = sprintf(
-          'Domain "%s" will expire in %d days (threshold: %d)',
-          $domain,
-          $interval->days,
-          $domainExpirationThreshold
-        );
+      if ($failFast === true) {
+        $this->printErrors($errors, $output);
 
-        if ($failFast === true) {
-          $this->printErrors($errors, $output);
-
-          return Command::FAILURE;
-        }
-      }
-
-      $output->writeln(
-        sprintf(
-          'Domain expires in: <options=bold>%d days</>',
-          $interval->days
-        ),
-        OutputInterface::VERBOSITY_DEBUG
-      );
-    }
-
-    if ($checks['domainRegistrarName'] === true) {
-      if ($info->registrar === '') {
-        $errors[] = sprintf(
-          'Failed to retrieve the registrar name for domain "%s"',
-          $domain
-        );
-
-        if ($failFast === true) {
-          $this->printErrors($errors, $output);
-
-          return Command::FAILURE;
-        }
-      }
-
-      $output->writeln(
-        sprintf(
-          'Registrar name: <options=bold>%s</>',
-          $info->registrar
-        ),
-        OutputInterface::VERBOSITY_DEBUG
-      );
-
-      if ($info->registrar !== $registrarName) {
-        $errors[] = sprintf(
-          'Registrar name for domain "%s" does not match the expected "%s", found: "%s"',
-          $domain,
-          $registrarName,
-          $info->registrar
-        );
-
-        if ($failFast === true) {
-          $this->printErrors($errors, $output);
-
-          return Command::FAILURE;
-        }
-      }
-    }
-
-    if ($checks['domainTransferProhibited'] === true) {
-      if ($info->states === []) {
-        $errors[] = sprintf(
-          'Failed to retrieve the status for domain "%s"',
-          $domain
-        );
-
-        if ($failFast === true) {
-          $this->printErrors($errors, $output);
-
-          return Command::FAILURE;
-        }
-      }
-
-      if (in_array('clienttransferprohibited', $info->states, true) === false) {
-        $errors[] = sprintf(
-          'Domain "%s" does not have the "clientTransferProhibited" status activated',
-          $domain
-        );
-
-        if ($failFast === true) {
-          $this->printErrors($errors, $output);
-
-          return Command::FAILURE;
-        }
+        return Command::FAILURE;
       }
     }
 
