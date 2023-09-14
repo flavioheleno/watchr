@@ -3,6 +3,7 @@ declare(strict_types = 1);
 
 namespace Watchr\Application\Services\HTTP;
 
+use CurlHandle;
 use RuntimeException;
 use Watchr\Application\Contracts\HTTP\HttpRequestMethodEnum;
 use Watchr\Application\DataObjects\HTTP\BasicAuthentication;
@@ -12,32 +13,14 @@ use Watchr\Application\DataObjects\HTTP\DigestAuthentication;
 use Watchr\Application\DataObjects\HTTP\HeaderAuthentication;
 use Watchr\Application\DataObjects\HTTP\HttpConfiguration;
 use Watchr\Application\DataObjects\HTTP\HttpResponse;
+use Watchr\Application\Streams\NullStream;
+use Watchr\Application\Streams\Stream;
 
 final class HttpCheckService {
   /**
    * @var array<int,bool|string|int>
    */
   private array $stdOpts;
-
-  private function parseHeaders(string $response): array {
-    $headers = [];
-
-    $lines = explode("\r\n", $response);
-    foreach ($lines as $line) {
-      $split = strpos($line, ': ');
-      if ($split === false) {
-        // ignore lines that don't follow the expected format (<name>: <value>)
-        continue;
-      }
-
-      $name = trim(substr($line, 0, $split));
-      $value = trim(substr($line, $split + 2));
-      $headers[$name] = $value;
-    }
-
-    return $headers;
-  }
-
 
   public function __construct(
     int $connectTimeout,
@@ -55,7 +38,7 @@ final class HttpCheckService {
       CURLOPT_FORBID_REUSE => true,
       CURLOPT_FRESH_CONNECT => true,
       CURLOPT_TCP_NODELAY => true,
-      CURLOPT_HEADER => true,
+      CURLOPT_HEADER => false,
       CURLOPT_HTTP_CONTENT_DECODING => true,
       CURLOPT_RETURNTRANSFER => true,
       CURLOPT_TCP_FASTOPEN => true,
@@ -73,7 +56,7 @@ final class HttpCheckService {
   ): HttpResponse {
     $opts = [
       CURLOPT_NOBODY => $requestMethod === HttpRequestMethodEnum::HEAD,
-      CURLOPT_RETURNTRANSFER => $requestMethod !== HttpRequestMethodEnum::HEAD,
+      CURLOPT_RETURNTRANSFER => false,
       CURLOPT_CUSTOMREQUEST => $requestMethod->value,
     ];
 
@@ -115,12 +98,36 @@ final class HttpCheckService {
       $opts[CURLOPT_HTTPHEADER] = array_merge($configuration->headers, $headers);
     }
 
+    $responseHeaders = [];
+    $opts[CURLOPT_HEADERFUNCTION] = static function (CurlHandle $hCurl, string $data) use (&$responseHeaders): int {
+      $split = strpos($data, ': ');
+      if ($split === false) {
+        // ignore header lines that don't follow the expected format (<name>: <value>)
+        return strlen($data);
+      }
+
+      $name = trim(substr($data, 0, $split));
+      $value = trim(substr($data, $split + 2));
+      $responseHeaders[$name] = $value;
+
+      return strlen($data);
+    };
+
+    if ($requestMethod === HttpRequestMethodEnum::HEAD) {
+      $responseBody = new NullStream();
+    } else {
+      $responseBody = new Stream(fopen('php://temp', 'w+b'));
+      $opts[CURLOPT_WRITEFUNCTION] = static function (CurlHandle $hCurl, string $data) use ($responseBody): int {
+        return $responseBody->write($data);
+      };
+    }
+
     $hCurl = curl_init($url);
     if (curl_setopt_array($hCurl, $this->stdOpts + $opts) === false) {
       throw new RuntimeException('Failed to set curl options');
     }
 
-    $response = curl_exec($hCurl);
+    curl_exec($hCurl);
     if (curl_errno($hCurl) > 0) {
       $curlError = curl_error($hCurl);
       curl_close($hCurl);
@@ -128,13 +135,7 @@ final class HttpCheckService {
       throw new RuntimeException($curlError);
     }
 
-    $split = strpos($response, "\r\n\r\n");
-    if ($split === false) {
-      throw new RuntimeException('Invalid HTTP Response format');
-    }
-
-    $responseHeaders = $this->parseHeaders(substr($response, 0, $split));
-    $responseBody = substr($response, $split + 4);
+    $responseBody->readOnly();
 
     $response = new HttpResponse(
       curl_getinfo($hCurl, CURLINFO_APPCONNECT_TIME_T),

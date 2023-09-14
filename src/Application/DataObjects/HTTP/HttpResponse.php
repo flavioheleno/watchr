@@ -3,9 +3,11 @@ declare(strict_types = 1);
 
 namespace Watchr\Application\DataObjects\HTTP;
 
+use Watchr\Application\Contracts\Streams\StreamInterface;
+
 final class HttpResponse {
   public readonly int $appConnectTime;
-  public readonly string $body;
+  public readonly StreamInterface $body;
   /**
    * @var array<int, array<string, string>>
    */
@@ -31,7 +33,7 @@ final class HttpResponse {
    */
   public function __construct(
     int $appConnectTime,
-    string $body,
+    StreamInterface $body,
     array $certChain,
     int $connectTime,
     string $contentType,
