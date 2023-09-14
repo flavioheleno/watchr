@@ -4,7 +4,6 @@ declare(strict_types = 1);
 namespace Watchr\Application\DataObjects\HTTP;
 
 use Watchr\Application\Contracts\HTTP\HttpAuthenticationInterface;
-use Watchr\Application\Contracts\HTTP\HttpAuthenticationLocationEnum;
 
 final class BasicAuthentication implements HttpAuthenticationInterface {
   public readonly string $username;
