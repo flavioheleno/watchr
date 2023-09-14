@@ -93,7 +93,7 @@ final class CheckDomainCommand extends Command {
         InputArgument::REQUIRED,
         'Domain Name to be checked'
       );
-    }
+  }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
     $checks = [
