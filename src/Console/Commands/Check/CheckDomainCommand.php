@@ -6,12 +6,14 @@ namespace Watchr\Console\Commands\Check;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Exception;
+use InvalidArgumentException;
 use Iodev\Whois\Whois;
+use League\Config\Configuration;
 use Psr\Clock\ClockInterface;
+use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -19,6 +21,7 @@ use Watchr\Console\Utils\DateUtils;
 
 #[AsCommand('check:domain', 'Run multiple checks on a domain name')]
 final class CheckDomainCommand extends Command {
+  private Configuration $config;
   private ClockInterface $clock;
   private Whois $whois;
 
@@ -52,80 +55,90 @@ final class CheckDomainCommand extends Command {
   protected function configure(): void {
     $this
       ->addOption(
-        'skip-domain-expiration-date',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain expiration date validation'
-      )
-      ->addOption(
-        'domain-expiration-threshold',
-        null,
+        'config',
+        'c',
         InputOption::VALUE_REQUIRED,
-        'Number of days left to domain expiration that will trigger an error',
-        5
-      )
-      ->addOption(
-        'skip-domain-registrar-name',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain Registrar Name validation'
-      )
-      ->addOption(
-        'registrar-name',
-        null,
-        InputOption::VALUE_REQUIRED,
-        'Registrar\'s Name where the Domain Name has been registered'
-      )
-      ->addOption(
-        'skip-domain-transfer-prohibited',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain transfer lock status validation'
-      )
-      ->addOption(
-        'fail-fast',
-        null,
-        InputOption::VALUE_NONE,
-        'Exit immediately when a check fails instead of running all checks'
-      )
-      ->addArgument(
-        'domain',
-        InputArgument::REQUIRED,
-        'Domain Name to be checked'
+        'Path to configuration file',
+        getcwd() . '/watchr.json'
       );
   }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
+    $configPath = $input->getOption('config');
+    if (is_readable($configPath) === false) {
+      throw new InvalidArgumentException('Configuration file is not readable');
+    }
+
+    $contents = file_get_contents($configPath);
+    if ($contents === false) {
+      throw new RuntimeException('Failed to read configuration file contents');
+    }
+
+    $this->config->merge(json_decode($contents, true, flags: JSON_THROW_ON_ERROR));
+
+    $subject = $this->config->get('subject');
+
+    $output->writeln(
+      sprintf(
+        'Subject: <options=bold>%s</>',
+        $subject
+      ),
+      OutputInterface::VERBOSITY_VERBOSE
+    );
+
+    if ((bool)$this->config->get('domain.enabled') === false) {
+      $output->writeln(
+        'Domain check is disabled, leaving',
+        OutputInterface::VERBOSITY_VERBOSE
+      );
+
+      return Command::SUCCESS;
+    }
+
     $checks = [
-      'domainExpirationDate' => (bool)$input->getOption('skip-domain-expiration-date') === false,
-      'domainRegistrarName' => (bool)$input->getOption('skip-domain-registrar-name') === false,
-      'domainTransferProhibited' => (bool)$input->getOption('skip-domain-transfer-prohibited') === false
+      'expirationDate' => true,
+      'registrarName' => true,
+      'statusFlags' => true
     ];
 
-    $domainExpirationThreshold = (int)$input->getOption('domain-expiration-threshold');
-    $registrarName = (string)$input->getOption('registrar-name');
+    $expirationThreshold = (int)$this->config->get('domain.expirationThreshold');
+    if ($expirationThreshold === -1) {
+      $checks['expirationDate'] = false;
+    }
 
-    $failFast = (bool)$input->getOption('fail-fast');
-    $domain = $input->getArgument('domain');
+    $registrarName = (string)$this->config->get('domain.registrarName');
+    if ($registrarName === '') {
+      $checks['registrarName'] = false;
+    }
+
+    $statusFlags = (array)$this->config->get('domain.statusFlags');
+    if ($statusFlags === []) {
+      $checks['statusFlags'] = false;
+    }
+
+    $failFast = (bool)$this->config->get('failFast');
 
     if ($output->isDebug() === true) {
       $output->writeln('');
       $table = new Table($output);
       $table
-        ->setHeaders(['Verification', 'Status'])
+        ->setHeaders(['Verification', 'Status', 'Value'])
         ->addRows(
           [
             [
-              'Domain Expiration Date',
-              ($checks['domainExpirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Expiration Date',
+              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $expirationThreshold > -1 ? "{$expirationThreshold} days" : '-'
             ],
             [
-              'Domain Registrar Name',
-              ($checks['domainRegistrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Registrar Name',
+              ($checks['registrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $registrarName ?: '-'
             ],
             [
-              'Domain Transfer Prohibited',
-              ($checks['domainTransferProhibited'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Status Flags',
+              ($checks['statusFlags'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $statusFlags === [] ? '-' : implode(', ', $statusFlags)
             ]
           ]
         )
@@ -134,29 +147,18 @@ final class CheckDomainCommand extends Command {
       $output->writeln('');
     }
 
-
-    $errors = [];
-    if ($checks['domainRegistrarName'] === true && trim($registrarName) === '') {
-      $errors[] = '<options=bold>--registrar-name</> option is required unless <options=bold>--skip-domain-registrar-name</> is set';
-    }
-
-    if (filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false) {
-      $errors[] = 'argument <options=bold>domain</> contains an invalid domain name';
-    }
-
-    if (count($errors) > 0) {
-      $this->printErrors($errors, $output);
-
-      return Command::FAILURE;
-    }
-
     $needWhois = (
-      $checks['domainExpirationDate'] ||
-      $checks['domainRegistrarName'] ||
-      $checks['domainTransferProhibited']
+      $checks['expirationDate'] ||
+      $checks['registrarName'] ||
+      $checks['statusFlags']
     );
 
     if ($needWhois === false) {
+      $output->writeln(
+        'All domain verifications are disabled, leaving',
+        OutputInterface::VERBOSITY_VERBOSE
+      );
+
       return Command::SUCCESS;
     }
 
@@ -164,19 +166,17 @@ final class CheckDomainCommand extends Command {
     $now = $this->clock->now();
 
     $output->writeln(
-      'Starting domain checks',
+      'Starting domain check',
       OutputInterface::VERBOSITY_DEBUG
     );
 
     try {
-      $info = $this->whois->loadDomainInfo($domain);
+      $info = $this->whois->loadDomainInfo($subject);
 
-      if ($checks['domainExpirationDate'] === true) {
+      $errors = [];
+      if ($checks['expirationDate'] === true) {
         if ($info->expirationDate === 0) {
-          $errors[] = sprintf(
-            'Failed to retrieve the expiration date for domain "%s"',
-            $domain
-          );
+          $errors[] = 'Failed to retrieve the expiration date';
 
           if ($failFast === true) {
             return Command::FAILURE;
@@ -186,7 +186,7 @@ final class CheckDomainCommand extends Command {
         $expiresAt = (new DateTimeImmutable())->setTimestamp($info->expirationDate);
         $output->writeln(
           sprintf(
-            'Domain expiration date: <options=bold>%s</> (%d)',
+            'Domain expiration date is <options=bold>%s</> (%d)',
             $expiresAt->format(DateTimeInterface::ATOM),
             $info->expirationDate
           ),
@@ -196,8 +196,7 @@ final class CheckDomainCommand extends Command {
         $interval = $now->diff($expiresAt);
         if ($interval->days <= 0) {
           $errors[] = sprintf(
-            'Domain "%s" expired %s ago',
-            $domain,
+            'Domain has expired %s ago',
             DateUtils::timeAgo($interval)
           );
 
@@ -208,12 +207,11 @@ final class CheckDomainCommand extends Command {
           }
         }
 
-        if ($interval->days <= $domainExpirationThreshold) {
+        if ($interval->days <= $expirationThreshold) {
           $errors[] = sprintf(
-            'Domain "%s" will expire in %d days (threshold: %d)',
-            $domain,
+            'Domain will expire in %d days (threshold: %d)',
             $interval->days,
-            $domainExpirationThreshold
+            $expirationThreshold
           );
 
           if ($failFast === true) {
@@ -225,19 +223,16 @@ final class CheckDomainCommand extends Command {
 
         $output->writeln(
           sprintf(
-            'Domain expires in: <options=bold>%d days</>',
+            'Domain expires in <options=bold>%d days</>',
             $interval->days
           ),
           OutputInterface::VERBOSITY_DEBUG
         );
       }
 
-      if ($checks['domainRegistrarName'] === true) {
+      if ($checks['registrarName'] === true) {
         if ($info->registrar === '') {
-          $errors[] = sprintf(
-            'Failed to retrieve the registrar name for domain "%s"',
-            $domain
-          );
+          $errors[] = 'Failed to retrieve the registrar name';
 
           if ($failFast === true) {
             $this->printErrors($errors, $output);
@@ -248,7 +243,7 @@ final class CheckDomainCommand extends Command {
 
         $output->writeln(
           sprintf(
-            'Registrar name: <options=bold>%s</>',
+            'Registrar name <options=bold>%s</>',
             $info->registrar
           ),
           OutputInterface::VERBOSITY_DEBUG
@@ -256,8 +251,7 @@ final class CheckDomainCommand extends Command {
 
         if ($info->registrar !== $registrarName) {
           $errors[] = sprintf(
-            'Registrar name for domain "%s" does not match the expected "%s", found: "%s"',
-            $domain,
+            'Registrar name does not match the expected name "%s", found: "%s"',
             $registrarName,
             $info->registrar
           );
@@ -270,12 +264,9 @@ final class CheckDomainCommand extends Command {
         }
       }
 
-      if ($checks['domainTransferProhibited'] === true) {
+      if ($checks['statusFlags'] === true) {
         if ($info->states === []) {
-          $errors[] = sprintf(
-            'Failed to retrieve the status for domain "%s"',
-            $domain
-          );
+          $errors[] = 'Failed to retrieve the status flags';
 
           if ($failFast === true) {
             $this->printErrors($errors, $output);
@@ -284,11 +275,22 @@ final class CheckDomainCommand extends Command {
           }
         }
 
-        if (in_array('clienttransferprohibited', $info->states, true) === false) {
+        $output->writeln(
+          sprintf(
+            'Active status flags <options=bold>%s</>',
+            implode('</>, <options=bold>', $info->states)
+          ),
+          OutputInterface::VERBOSITY_DEBUG
+        );
+
+        $diff = array_diff(
+          array_map('strtolower', $statusFlags),
+          array_map('strtolower', $info->states)
+        );
+        if ($diff !== []) {
           $errors[] = sprintf(
-            'Domain "%s" does not have the "clientTransferProhibited" status activated (active: %s)',
-            $domain,
-            implode(', ', $info->states)
+            'Not all required status flags are active (missing: %s)',
+            implode(', ', $diff)
           );
 
           if ($failFast === true) {
@@ -309,7 +311,7 @@ final class CheckDomainCommand extends Command {
     }
 
     $output->writeln(
-      'Finished domain checks',
+      'Finished domain check',
       OutputInterface::VERBOSITY_DEBUG
     );
 
@@ -323,11 +325,13 @@ final class CheckDomainCommand extends Command {
   }
 
   public function __construct(
+    Configuration $config,
     ClockInterface $clock,
     Whois $whois
   ) {
     parent::__construct();
 
+    $this->config = $config;
     $this->clock = $clock;
     $this->whois = $whois;
   }
