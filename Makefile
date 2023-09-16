@@ -4,7 +4,11 @@ composer.lock:
 	@composer validate --strict
 	@composer update
 
-install: composer.json composer.lock  ## Install PHP dependencies
+vendor: composer.json composer.lock
+	@composer validate --strict
+	@composer install
+
+install: vendor ## Install PHP dependencies
 
 update: composer.json ## Update PHP dependencies
 	@composer update -W
