@@ -1,12 +1,12 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Console\Utils;
+namespace Watchr\Console\Traits;
 
 use DateInterval;
 
-final class DateUtils {
-  public static function timeAgo(DateInterval $interval): string {
+trait DateUtilsTrait {
+  private function timeAgo(DateInterval $interval): string {
     if ($interval->y > 0) {
       return $interval->y === 1 ? '1 year ago' : $interval->y . ' years ago';
     }

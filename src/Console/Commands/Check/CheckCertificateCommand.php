@@ -20,11 +20,12 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Watchr\Console\Traits\DateUtilsTrait;
 use Watchr\Console\Traits\ErrorPrinterTrait;
-use Watchr\Console\Utils\DateUtils;
 
 #[AsCommand('check:certificate', 'Run multiple checks on a certificate chain')]
 final class CheckCertificateCommand extends Command {
+  use DateUtilsTrait;
   use ErrorPrinterTrait;
 
   private CertificateInfo $certInfo;
@@ -284,7 +285,7 @@ final class CheckCertificateCommand extends Command {
           $errors[] = sprintf(
             'Certificate for domain "%s" expired %s ago',
             $domain,
-            DateUtils::timeAgo($interval)
+            $this->timeAgo($interval)
           );
 
           if ($failFast === true) {
@@ -507,7 +508,7 @@ final class CheckCertificateCommand extends Command {
         $output->writeln(
           sprintf(
             'OCSP Revocation list last update: <options=bold>%s</> (%s)',
-            DateUtils::timeAgo($interval),
+            $this->timeAgo($interval),
             $response->getThisUpdate()->format(DateTimeInterface::ATOM)
           ),
           OutputInterface::VERBOSITY_DEBUG
