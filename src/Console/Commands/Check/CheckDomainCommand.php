@@ -15,39 +15,15 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Watchr\Console\Traits\ErrorPrinterTrait;
 use Watchr\Console\Utils\DateUtils;
 
 #[AsCommand('check:domain', 'Run multiple checks on a domain name')]
 final class CheckDomainCommand extends Command {
+  use ErrorPrinterTrait;
+
   private ClockInterface $clock;
   private Whois $whois;
-
-  /**
-   * @param string[] $errors
-   */
-  private function printErrors(array $errors, OutputInterface $output): void {
-    if (count($errors) > 1) {
-      $output->writeln(
-        [
-          'Found ' . count($errors) . ' errors:',
-          ...array_map(
-            static function (string $error): string {
-              return "\t$error";
-            },
-            $errors
-          )
-        ],
-        OutputInterface::VERBOSITY_VERBOSE
-      );
-
-      return;
-    }
-
-    $output->writeln(
-      'Error: ' . array_pop($errors),
-      OutputInterface::VERBOSITY_VERBOSE
-    );
-  }
 
   protected function configure(): void {
     $this
