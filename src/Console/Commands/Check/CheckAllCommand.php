@@ -187,9 +187,9 @@ final class CheckAllCommand extends Command {
           'command' => 'check:domain',
           'domain' => $domain,
           '--fail-fast' => $failFast,
-          '--skip-domain-expiration-date' => !$checks['domainExpirationDate'],
-          '--skip-domain-registrar-name' => !$checks['domainRegistrarName'],
-          '--skip-domain-transfer-prohibited' => !$checks['domainTransferProhibited'],
+          '--skip-expiration-date' => !$checks['domainExpirationDate'],
+          '--skip-registrar-name' => !$checks['domainRegistrarName'],
+          '--skip-transfer-prohibited' => !$checks['domainTransferProhibited'],
           '--domain-expiration-threshold' => $domainExpirationThreshold,
           '--registrar-name' => $registrarName
         ]
@@ -206,26 +206,26 @@ final class CheckAllCommand extends Command {
     }
 
     if (
-      $checks['certificateOcspRevoked'] ||
       $checks['certificateExpirationDate'] ||
       $checks['certificateFingerprint'] ||
       $checks['certificateSerialNumber'] ||
-      $checks['certificateIssuerName']
+      $checks['certificateIssuerName'] ||
+      $checks['certificateOcspRevoked']
     ) {
       $certInput = new ArrayInput(
         [
           'command' => 'check:certificate',
           'domain' => $domain,
           '--fail-fast' => $failFast,
-          '--skip-certificate-expiration-date' => !$checks['certificateOcspRevoked'],
-          '--skip-certificate-fingerprint' => !$checks['certificateExpirationDate'],
-          '--skip-certificate-serial-number' => !$checks['certificateFingerprint'],
-          '--skip-certificate-issuer-name' => !$checks['certificateSerialNumber'],
-          '--skip-certificate-ocsp-revoked' => !$checks['certificateIssuerName'],
-          '--certificate-expiration-threshold' => $certificateExpirationThreshold,
-          '--certificate-fingerprint' => $certificateFingerprint,
-          '--certificate-serial-number' => $certificateSerialNumber,
-          '--certificate-issuer-name' => $certificateIssuerName
+          '--skip-expiration-date' => !$checks['certificateExpirationDate'],
+          '--skip-fingerprint' => !$checks['certificateFingerprint'],
+          '--skip-serial-number' => !$checks['certificateSerialNumber'],
+          '--skip-issuer-name' => !$checks['certificateIssuerName'],
+          '--skip-ocsp-revoked' => !$checks['certificateOcspRevoked'],
+          '--expiration-threshold' => $certificateExpirationThreshold,
+          '--fingerprint' => $certificateFingerprint,
+          '--serial-number' => $certificateSerialNumber,
+          '--issuer-name' => $certificateIssuerName
         ]
       );
 

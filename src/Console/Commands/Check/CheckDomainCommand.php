@@ -29,7 +29,7 @@ final class CheckDomainCommand extends Command {
   protected function configure(): void {
     $this
       ->addOption(
-        'skip-domain-expiration-date',
+        'skip-expiration-date',
         null,
         InputOption::VALUE_NONE,
         'Skip Domain expiration date validation'
@@ -42,7 +42,7 @@ final class CheckDomainCommand extends Command {
         5
       )
       ->addOption(
-        'skip-domain-registrar-name',
+        'skip-registrar-name',
         null,
         InputOption::VALUE_NONE,
         'Skip Domain Registrar Name validation'
@@ -54,7 +54,7 @@ final class CheckDomainCommand extends Command {
         'Registrar\'s Name where the Domain Name has been registered'
       )
       ->addOption(
-        'skip-domain-transfer-prohibited',
+        'skip-transfer-prohibited',
         null,
         InputOption::VALUE_NONE,
         'Skip Domain transfer lock status validation'
@@ -74,12 +74,12 @@ final class CheckDomainCommand extends Command {
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
     $checks = [
-      'domainExpirationDate' => (bool)$input->getOption('skip-domain-expiration-date') === false,
-      'domainRegistrarName' => (bool)$input->getOption('skip-domain-registrar-name') === false,
-      'domainTransferProhibited' => (bool)$input->getOption('skip-domain-transfer-prohibited') === false
+      'expirationDate' => (bool)$input->getOption('skip-expiration-date') === false,
+      'registrarName' => (bool)$input->getOption('skip-registrar-name') === false,
+      'transferProhibited' => (bool)$input->getOption('skip-transfer-prohibited') === false
     ];
 
-    $domainExpirationThreshold = (int)$input->getOption('domain-expiration-threshold');
+    $expirationThreshold = (int)$input->getOption('domain-expiration-threshold');
     $registrarName = (string)$input->getOption('registrar-name');
 
     $failFast = (bool)$input->getOption('fail-fast');
@@ -93,16 +93,16 @@ final class CheckDomainCommand extends Command {
         ->addRows(
           [
             [
-              'Domain Expiration Date',
-              ($checks['domainExpirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Expiration Date',
+              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
             ],
             [
-              'Domain Registrar Name',
-              ($checks['domainRegistrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Registrar Name',
+              ($checks['registrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
             ],
             [
-              'Domain Transfer Prohibited',
-              ($checks['domainTransferProhibited'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Transfer Prohibited',
+              ($checks['transferProhibited'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
             ]
           ]
         )
@@ -113,8 +113,8 @@ final class CheckDomainCommand extends Command {
 
 
     $errors = [];
-    if ($checks['domainRegistrarName'] === true && trim($registrarName) === '') {
-      $errors[] = '<options=bold>--registrar-name</> option is required unless <options=bold>--skip-domain-registrar-name</> is set';
+    if ($checks['registrarName'] === true && trim($registrarName) === '') {
+      $errors[] = '<options=bold>--registrar-name</> option is required unless <options=bold>--skip-registrar-name</> is set';
     }
 
     if (filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false) {
@@ -128,9 +128,9 @@ final class CheckDomainCommand extends Command {
     }
 
     $needWhois = (
-      $checks['domainExpirationDate'] ||
-      $checks['domainRegistrarName'] ||
-      $checks['domainTransferProhibited']
+      $checks['expirationDate'] ||
+      $checks['registrarName'] ||
+      $checks['transferProhibited']
     );
 
     if ($needWhois === false) {
@@ -148,7 +148,7 @@ final class CheckDomainCommand extends Command {
     try {
       $info = $this->whois->loadDomainInfo($domain);
 
-      if ($checks['domainExpirationDate'] === true) {
+      if ($checks['expirationDate'] === true) {
         if ($info->expirationDate === 0) {
           $errors[] = sprintf(
             'Failed to retrieve the expiration date for domain "%s"',
@@ -185,12 +185,12 @@ final class CheckDomainCommand extends Command {
           }
         }
 
-        if ($interval->days <= $domainExpirationThreshold) {
+        if ($interval->days <= $expirationThreshold) {
           $errors[] = sprintf(
             'Domain "%s" will expire in %d days (threshold: %d)',
             $domain,
             $interval->days,
-            $domainExpirationThreshold
+            $expirationThreshold
           );
 
           if ($failFast === true) {
@@ -209,7 +209,7 @@ final class CheckDomainCommand extends Command {
         );
       }
 
-      if ($checks['domainRegistrarName'] === true) {
+      if ($checks['registrarName'] === true) {
         if ($info->registrar === '') {
           $errors[] = sprintf(
             'Failed to retrieve the registrar name for domain "%s"',
@@ -247,7 +247,7 @@ final class CheckDomainCommand extends Command {
         }
       }
 
-      if ($checks['domainTransferProhibited'] === true) {
+      if ($checks['transferProhibited'] === true) {
         if ($info->states === []) {
           $errors[] = sprintf(
             'Failed to retrieve the status for domain "%s"',
