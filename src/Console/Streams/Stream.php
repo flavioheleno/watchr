@@ -1,11 +1,11 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\Streams;
+namespace Watchr\Console\Streams;
 
 use InvalidArgumentException;
 use RuntimeException;
-use Watchr\Application\Contracts\Streams\StreamInterface;
+use Watchr\Console\Contracts\Streams\StreamInterface;
 
 /**
  * PHP stream implementation

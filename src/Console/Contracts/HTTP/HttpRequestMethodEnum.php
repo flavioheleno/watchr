@@ -1,7 +1,7 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\Contracts\HTTP;
+namespace Watchr\Console\Contracts\HTTP;
 
 enum HttpRequestMethodEnum: string {
   case GET = 'GET';

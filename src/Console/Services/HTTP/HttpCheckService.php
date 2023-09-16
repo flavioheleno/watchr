@@ -1,20 +1,20 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\Services\HTTP;
+namespace Watchr\Console\Services\HTTP;
 
 use CurlHandle;
 use RuntimeException;
-use Watchr\Application\Contracts\HTTP\HttpRequestMethodEnum;
-use Watchr\Application\DataObjects\HTTP\BasicAuthentication;
-use Watchr\Application\DataObjects\HTTP\BearerTokenAuthentication;
-use Watchr\Application\DataObjects\HTTP\CookieAuthentication;
-use Watchr\Application\DataObjects\HTTP\DigestAuthentication;
-use Watchr\Application\DataObjects\HTTP\HeaderAuthentication;
-use Watchr\Application\DataObjects\HTTP\HttpConfiguration;
-use Watchr\Application\DataObjects\HTTP\HttpResponse;
-use Watchr\Application\Streams\NullStream;
-use Watchr\Application\Streams\Stream;
+use Watchr\Console\Contracts\HTTP\HttpRequestMethodEnum;
+use Watchr\Console\DataObjects\HTTP\BasicAuthentication;
+use Watchr\Console\DataObjects\HTTP\BearerTokenAuthentication;
+use Watchr\Console\DataObjects\HTTP\CookieAuthentication;
+use Watchr\Console\DataObjects\HTTP\DigestAuthentication;
+use Watchr\Console\DataObjects\HTTP\HeaderAuthentication;
+use Watchr\Console\DataObjects\HTTP\HttpConfiguration;
+use Watchr\Console\DataObjects\HTTP\HttpResponse;
+use Watchr\Console\Streams\NullStream;
+use Watchr\Console\Streams\Stream;
 
 final class HttpCheckService {
   /**

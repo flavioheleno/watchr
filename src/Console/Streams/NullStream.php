@@ -1,9 +1,10 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\Streams;
+namespace Watchr\Console\Streams;
 
-use Watchr\Application\Contracts\Streams\StreamInterface;
+use RuntimeException;
+use Watchr\Console\Contracts\Streams\StreamInterface;
 
 /**
 * Does not store any data written to it.

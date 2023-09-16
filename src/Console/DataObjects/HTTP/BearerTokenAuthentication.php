@@ -1,9 +1,9 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\DataObjects\HTTP;
+namespace Watchr\Console\DataObjects\HTTP;
 
-use Watchr\Application\Contracts\HTTP\HttpAuthenticationInterface;
+use Watchr\Console\Contracts\HTTP\HttpAuthenticationInterface;
 
 final class BearerTokenAuthentication implements HttpAuthenticationInterface {
   public readonly string $token;

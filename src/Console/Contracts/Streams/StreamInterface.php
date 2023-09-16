@@ -1,7 +1,7 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\Contracts\Streams;
+namespace Watchr\Console\Contracts\Streams;
 
 use Stringable;
 

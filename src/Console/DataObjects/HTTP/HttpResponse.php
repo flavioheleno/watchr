@@ -1,9 +1,9 @@
 <?php
 declare(strict_types = 1);
 
-namespace Watchr\Application\DataObjects\HTTP;
+namespace Watchr\Console\DataObjects\HTTP;
 
-use Watchr\Application\Contracts\Streams\StreamInterface;
+use Watchr\Console\Contracts\Streams\StreamInterface;
 
 final class HttpResponse {
   public readonly int $appConnectTime;
