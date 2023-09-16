@@ -1,17 +1,18 @@
 .DEFAULT_GOAL := help
 
 composer.lock:
-	@composer validate --strict
+	@composer validate --strict --quiet
 	@composer update
 
 vendor: composer.json composer.lock
-	@composer validate --strict
+	@composer validate --strict --quiet
 	@composer install
 
 install: vendor ## Install PHP dependencies
 
 update: composer.json ## Update PHP dependencies
-	@composer update -W
+	@composer validate --strict --quiet
+	@composer update --with-all-dependencies
 
 build: install ## Build watchr.phar
 	@box compile
