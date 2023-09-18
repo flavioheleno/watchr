@@ -37,63 +37,39 @@ final class CheckCertificateCommand extends Command {
   protected function configure(): void {
     $this
       ->addOption(
-        'skip-expiration-date',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate expiration date validation'
-      )
-      ->addOption(
         'expiration-threshold',
-        null,
+        'e',
         InputOption::VALUE_REQUIRED,
-        'Number of days left to certificate expiration that will trigger an error',
+        'Number of days until the certification expiration date',
         5
       )
       ->addOption(
-        'skip-fingerprint',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate Fingerprint validation'
-      )
-      ->addOption(
         'fingerprint',
-        null,
+        'p',
         InputOption::VALUE_REQUIRED,
-        'Certificate\'s Fingerprint'
-      )
-      ->addOption(
-        'skip-serial-number',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate Serial Number validation'
+        'Match the certificate SHA-256 Fingerprint'
       )
       ->addOption(
         'serial-number',
-        null,
+        's',
         InputOption::VALUE_REQUIRED,
-        'Certificate\'s Serial Number'
-      )
-      ->addOption(
-        'skip-issuer-name',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate issuer name validation'
+        'Match the certificate Serial Number'
       )
       ->addOption(
         'issuer-name',
-        null,
+        'i',
         InputOption::VALUE_REQUIRED,
-        'Certificate Authority that issued the TLS Certificate'
+        'Match the Certificate Authority (CA) that issued the TLS Certificate'
       )
       ->addOption(
         'skip-ocsp-revoked',
-        null,
+        'o',
         InputOption::VALUE_NONE,
         'Skip Certificate OCSP revocation validation'
       )
       ->addOption(
         'fail-fast',
-        null,
+        'f',
         InputOption::VALUE_NONE,
         'Exit immediately when a check fails instead of running all checks'
       )
@@ -105,18 +81,18 @@ final class CheckCertificateCommand extends Command {
     }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
-    $checks = [
-      'expirationDate' => (bool)$input->getOption('skip-expiration-date') === false,
-      'fingerprint' => (bool)$input->getOption('skip-fingerprint') === false,
-      'serialNumber' => (bool)$input->getOption('skip-serial-number') === false,
-      'issuerName' => (bool)$input->getOption('skip-issuer-name') === false,
-      'ocspRevoked' => (bool)$input->getOption('skip-ocsp-revoked') === false
-    ];
-
     $expirationThreshold = (int)$input->getOption('expiration-threshold');
     $fingerprint = (string)$input->getOption('fingerprint');
     $serialNumber = (string)$input->getOption('serial-number');
     $issuerName = (string)$input->getOption('issuer-name');
+
+    $checks = [
+      'expirationDate' => $expirationThreshold > 0,
+      'fingerprint' => $fingerprint !== '',
+      'serialNumber' => $serialNumber !== '',
+      'issuerName' => $issuerName !== '',
+      'ocspRevoked' => (bool)$input->getOption('skip-ocsp-revoked') === false
+    ];
 
     $failFast = (bool)$input->getOption('fail-fast');
     $domain = $input->getArgument('domain');
@@ -130,23 +106,28 @@ final class CheckCertificateCommand extends Command {
           [
             [
               'Expiration Date',
-              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $expirationThreshold > 0 ? "{$expirationThreshold} days" : '-'
             ],
             [
-              'Fingerprint',
-              ($checks['fingerprint'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'SHA-256 Fingerprint',
+              ($checks['fingerprint'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $fingerprint ?: '-'
             ],
             [
               'Serial Number',
-              ($checks['serialNumber'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              ($checks['serialNumber'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $serialNumber ?: '-'
             ],
             [
               'Issuer Name',
-              ($checks['issuerName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              ($checks['issuerName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $issuerName ?: '-'
             ],
             [
               'OCSP Revoked',
-              ($checks['ocspRevoked'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              ($checks['ocspRevoked'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              '-'
             ]
           ]
         )
@@ -156,19 +137,10 @@ final class CheckCertificateCommand extends Command {
     }
 
     $errors = [];
-    if ($checks['fingerprint'] === true && trim($fingerprint) === '') {
-      $errors[] = '<options=bold>--fingerprint</> option is required unless <options=bold>--skip-fingerprint</> is set';
-    }
-
-    if ($checks['serialNumber'] === true && trim($serialNumber) === '') {
-      $errors[] = '<options=bold>--serial-number</> option is required unless <options=bold>--skip-serial-number</> is set';
-    }
-
-    if ($checks['issuerName'] === true && trim($issuerName) === '') {
-      $errors[] = '<options=bold>--issuer-name</> option is required unless <options=bold>--skip-issuer-name</> is set';
-    }
-
-    if (filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false) {
+    if (
+      strpos($domain, '.') === false ||
+      filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false
+    ) {
       $errors[] = 'argument <options=bold>domain</> contains an invalid domain name';
     }
 
@@ -187,6 +159,11 @@ final class CheckCertificateCommand extends Command {
     );
 
     if ($needCertificate === false) {
+      $output->writeln(
+        'All certificate verifications are disabled, leaving',
+        OutputInterface::VERBOSITY_VERBOSE
+      );
+
       return Command::SUCCESS;
     }
 

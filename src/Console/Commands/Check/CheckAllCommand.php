@@ -48,56 +48,32 @@ final class CheckAllCommand extends Command {
         'Skips all certificate related validations'
       )
       ->addOption(
-        'skip-certificate-expiration-date',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate expiration date validation'
-      )
-      ->addOption(
         'certificate-expiration-threshold',
         null,
         InputOption::VALUE_REQUIRED,
-        'Number of days left to certificate expiration that will trigger an error',
+        'Number of days until the certification expiration date',
         5
       )
       ->addOption(
-        'skip-certificate-fingerprint',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate Fingerprint validation'
-      )
-      ->addOption(
-        'certificate-fingerprint',
+        'fingerprint',
         null,
         InputOption::VALUE_REQUIRED,
-        'Certificate\'s Fingerprint'
+        'Match the certificate SHA-256 Fingerprint'
       )
       ->addOption(
-        'skip-certificate-serial-number',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate Serial Number validation'
-      )
-      ->addOption(
-        'certificate-serial-number',
+        'serial-number',
         null,
         InputOption::VALUE_REQUIRED,
-        'Certificate\'s Serial Number'
+        'Match the certificate Serial Number'
       )
       ->addOption(
-        'skip-certificate-issuer-name',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Certificate issuer name validation'
-      )
-      ->addOption(
-        'certificate-issuer-name',
+        'issuer-name',
         null,
         InputOption::VALUE_REQUIRED,
-        'Certificate Authority that issued the TLS Certificate'
+        'Match the Certificate Authority (CA) that issued the TLS Certificate'
       )
       ->addOption(
-        'skip-certificate-ocsp-revoked',
+        'skip-ocsp-revoked',
         null,
         InputOption::VALUE_NONE,
         'Skip Certificate OCSP revocation validation'
@@ -116,19 +92,26 @@ final class CheckAllCommand extends Command {
   }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
+    // check:domain options
     $domainExpirationThreshold = (int)$input->getOption('domain-expiration-threshold');
     $registrarName = (string)$input->getOption('registrar-name');
     $statusCodes = (array)$input->getOption('status-codes');
+
+    // check:certificate options
+    $certificateExpirationThreshold = (int)$input->getOption('certificate-expiration-threshold');
+    $fingerprint = (string)$input->getOption('fingerprint');
+    $serialNumber = (string)$input->getOption('serial-number');
+    $issuerName = (string)$input->getOption('issuer-name');
 
     $checks = [
       'domainExpirationDate' => $domainExpirationThreshold > 0,
       'domainRegistrarName' => $registrarName !== '',
       'domainStatusCodes' => $statusCodes !== [],
-      'certificateExpirationDate' => (bool)$input->getOption('skip-certificate-expiration-date') === false,
-      'certificateFingerprint' => (bool)$input->getOption('skip-certificate-fingerprint') === false,
-      'certificateSerialNumber' => (bool)$input->getOption('skip-certificate-serial-number') === false,
-      'certificateIssuerName' => (bool)$input->getOption('skip-certificate-issuer-name') === false,
-      'certificateOcspRevoked' => (bool)$input->getOption('skip-certificate-ocsp-revoked') === false
+      'certificateExpirationDate' => $certificateExpirationThreshold > 0,
+      'certificateFingerprint' => $fingerprint !== '',
+      'certificateSerialNumber' => $serialNumber !== '',
+      'certificateIssuerName' => $issuerName !== '',
+      'certificateOcspRevoked' => (bool)$input->getOption('skip-ocsp-revoked') === false
     ];
 
     // skips all domain related validations
@@ -157,10 +140,6 @@ final class CheckAllCommand extends Command {
       $checks['certificateOcspRevoked'] = false;
     }
 
-    $certificateExpirationThreshold = (int)$input->getOption('certificate-expiration-threshold');
-    $certificateFingerprint = (string)$input->getOption('certificate-fingerprint');
-    $certificateSerialNumber = (string)$input->getOption('certificate-serial-number');
-    $certificateIssuerName = (string)$input->getOption('certificate-issuer-name');
 
     $failFast = (bool)$input->getOption('fail-fast');
     $domain = $input->getArgument('domain');
@@ -205,15 +184,11 @@ final class CheckAllCommand extends Command {
           'command' => 'check:certificate',
           'domain' => $domain,
           '--fail-fast' => $failFast,
-          '--skip-expiration-date' => !$checks['certificateExpirationDate'],
-          '--skip-fingerprint' => !$checks['certificateFingerprint'],
-          '--skip-serial-number' => !$checks['certificateSerialNumber'],
-          '--skip-issuer-name' => !$checks['certificateIssuerName'],
           '--skip-ocsp-revoked' => !$checks['certificateOcspRevoked'],
           '--expiration-threshold' => $certificateExpirationThreshold,
-          '--fingerprint' => $certificateFingerprint,
-          '--serial-number' => $certificateSerialNumber,
-          '--issuer-name' => $certificateIssuerName
+          '--fingerprint' => $fingerprint,
+          '--serial-number' => $serialNumber,
+          '--issuer-name' => $issuerName
         ]
       );
 
