@@ -62,3 +62,43 @@ jobs:
             bin/watchr.phar
             bin/watchr.phar.sha512
             bin/watchr.phar.asc
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@16c0bc4a6e6ada2cfd8afd41d22d95379cf7c32a
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image (runtime-cli)
+        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          build-args:
+            "VERSION=${{ github.ref_name }}"
+          tags: |
+            ghcr.io/flavioheleno/watchr:${{ github.ref_name }}
+            ghcr.io/flavioheleno/watchr:latest
+          target: runtime-cli
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Docker Image (standalone-cli)
+        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          build-args:
+            "VERSION=${{ github.ref_name }}-standalone"
+          tags: |
+            ghcr.io/flavioheleno/watchr:${{ github.ref_name }}-standalone
+            ghcr.io/flavioheleno/watchr:latest-standalone
+          target: standalone-cli
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
