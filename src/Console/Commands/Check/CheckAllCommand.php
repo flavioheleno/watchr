@@ -22,35 +22,24 @@ final class CheckAllCommand extends Command {
         'Skips all domain related validations'
       )
       ->addOption(
-        'skip-domain-expiration-date',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain expiration date validation'
-      )
-      ->addOption(
         'domain-expiration-threshold',
         null,
         InputOption::VALUE_REQUIRED,
-        'Number of days left to domain expiration that will trigger an error',
+        'Number of days until the domain expiration date',
         5
-      )
-      ->addOption(
-        'skip-domain-registrar-name',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain Registrar Name validation'
       )
       ->addOption(
         'registrar-name',
         null,
         InputOption::VALUE_REQUIRED,
-        'Registrar\'s Name where the Domain Name has been registered'
+        'Match the name of the company where the domain has been registered'
       )
       ->addOption(
-        'skip-domain-transfer-prohibited',
+        'status-codes',
         null,
-        InputOption::VALUE_NONE,
-        'Skip Domain transfer lock status validation'
+        InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+        'List of Extensible Provisioning Protocol (EPP) status codes that should be active',
+        ['clientTransferProhibited']
       )
       ->addOption(
         'skip-certificate-checks',
@@ -127,10 +116,14 @@ final class CheckAllCommand extends Command {
   }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
+    $domainExpirationThreshold = (int)$input->getOption('domain-expiration-threshold');
+    $registrarName = (string)$input->getOption('registrar-name');
+    $statusCodes = (array)$input->getOption('status-codes');
+
     $checks = [
-      'domainExpirationDate' => (bool)$input->getOption('skip-domain-expiration-date') === false,
-      'domainRegistrarName' => (bool)$input->getOption('skip-domain-registrar-name') === false,
-      'domainTransferProhibited' => (bool)$input->getOption('skip-domain-transfer-prohibited') === false,
+      'domainExpirationDate' => $domainExpirationThreshold > 0,
+      'domainRegistrarName' => $registrarName !== '',
+      'domainStatusCodes' => $statusCodes !== [],
       'certificateExpirationDate' => (bool)$input->getOption('skip-certificate-expiration-date') === false,
       'certificateFingerprint' => (bool)$input->getOption('skip-certificate-fingerprint') === false,
       'certificateSerialNumber' => (bool)$input->getOption('skip-certificate-serial-number') === false,
@@ -147,11 +140,8 @@ final class CheckAllCommand extends Command {
 
       $checks['domainExpirationDate'] = false;
       $checks['domainRegistrarName'] = false;
-      $checks['domainTransferProhibited'] = false;
+      $checks['domainStatusCodes'] = false;
     }
-
-    $domainExpirationThreshold = (int)$input->getOption('domain-expiration-threshold');
-    $registrarName = (string)$input->getOption('registrar-name');
 
     // skips all certificate related validations
     if ((bool)$input->getOption('skip-certificate-checks') === true) {
@@ -180,18 +170,16 @@ final class CheckAllCommand extends Command {
     if (
       $checks['domainExpirationDate'] ||
       $checks['domainRegistrarName'] ||
-      $checks['domainTransferProhibited']
+      $checks['domainStatusCodes']
     ) {
       $domainInput = new ArrayInput(
         [
           'command' => 'check:domain',
           'domain' => $domain,
           '--fail-fast' => $failFast,
-          '--skip-expiration-date' => !$checks['domainExpirationDate'],
-          '--skip-registrar-name' => !$checks['domainRegistrarName'],
-          '--skip-transfer-prohibited' => !$checks['domainTransferProhibited'],
-          '--domain-expiration-threshold' => $domainExpirationThreshold,
-          '--registrar-name' => $registrarName
+          '--expiration-threshold' => $domainExpirationThreshold,
+          '--registrar-name' => $registrarName,
+          '--status-codes' => $statusCodes
         ]
       );
 

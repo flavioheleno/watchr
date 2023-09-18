@@ -8,6 +8,7 @@ use DateTimeInterface;
 use Exception;
 use Iodev\Whois\Whois;
 use Psr\Clock\ClockInterface;
+use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
@@ -29,39 +30,28 @@ final class CheckDomainCommand extends Command {
   protected function configure(): void {
     $this
       ->addOption(
-        'skip-expiration-date',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain expiration date validation'
-      )
-      ->addOption(
-        'domain-expiration-threshold',
-        null,
+        'expiration-threshold',
+        'e',
         InputOption::VALUE_REQUIRED,
-        'Number of days left to domain expiration that will trigger an error',
+        'Number of days until the domain expiration date',
         5
       )
       ->addOption(
-        'skip-registrar-name',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain Registrar Name validation'
-      )
-      ->addOption(
         'registrar-name',
-        null,
+        'r',
         InputOption::VALUE_REQUIRED,
-        'Registrar\'s Name where the Domain Name has been registered'
+        'Match the name of the company where the domain has been registered'
       )
       ->addOption(
-        'skip-transfer-prohibited',
-        null,
-        InputOption::VALUE_NONE,
-        'Skip Domain transfer lock status validation'
+        'status-codes',
+        's',
+        InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+        'List of Extensible Provisioning Protocol (EPP) status codes that should be active',
+        ['clientTransferProhibited']
       )
       ->addOption(
         'fail-fast',
-        null,
+        'f',
         InputOption::VALUE_NONE,
         'Exit immediately when a check fails instead of running all checks'
       )
@@ -73,14 +63,15 @@ final class CheckDomainCommand extends Command {
   }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
-    $checks = [
-      'expirationDate' => (bool)$input->getOption('skip-expiration-date') === false,
-      'registrarName' => (bool)$input->getOption('skip-registrar-name') === false,
-      'transferProhibited' => (bool)$input->getOption('skip-transfer-prohibited') === false
-    ];
-
-    $expirationThreshold = (int)$input->getOption('domain-expiration-threshold');
+    $expirationThreshold = (int)$input->getOption('expiration-threshold');
     $registrarName = (string)$input->getOption('registrar-name');
+    $statusCodes = (array)$input->getOption('status-codes');
+
+    $checks = [
+      'expirationDate' => $expirationThreshold > 0,
+      'registrarName' => $registrarName !== '',
+      'statusCodes' => $statusCodes !== []
+    ];
 
     $failFast = (bool)$input->getOption('fail-fast');
     $domain = $input->getArgument('domain');
@@ -94,15 +85,18 @@ final class CheckDomainCommand extends Command {
           [
             [
               'Expiration Date',
-              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $expirationThreshold > 0 ? "{$expirationThreshold} days" : '-'
             ],
             [
               'Registrar Name',
-              ($checks['registrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              ($checks['registrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $registrarName ?: '-'
             ],
             [
-              'Transfer Prohibited',
-              ($checks['transferProhibited'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>')
+              'Status Codes',
+              ($checks['statusCodes'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+              $statusCodes === [] ? '-' : implode(', ', $statusCodes)
             ]
           ]
         )
@@ -111,13 +105,11 @@ final class CheckDomainCommand extends Command {
       $output->writeln('');
     }
 
-
     $errors = [];
-    if ($checks['registrarName'] === true && trim($registrarName) === '') {
-      $errors[] = '<options=bold>--registrar-name</> option is required unless <options=bold>--skip-registrar-name</> is set';
-    }
-
-    if (filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false) {
+    if (
+      strpos($domain, '.') === false ||
+      filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false
+    ) {
       $errors[] = 'argument <options=bold>domain</> contains an invalid domain name';
     }
 
@@ -130,10 +122,15 @@ final class CheckDomainCommand extends Command {
     $needWhois = (
       $checks['expirationDate'] ||
       $checks['registrarName'] ||
-      $checks['transferProhibited']
+      $checks['statusCodes']
     );
 
     if ($needWhois === false) {
+      $output->writeln(
+        'All domain verifications are disabled, leaving',
+        OutputInterface::VERBOSITY_VERBOSE
+      );
+
       return Command::SUCCESS;
     }
 
@@ -147,6 +144,9 @@ final class CheckDomainCommand extends Command {
 
     try {
       $info = $this->whois->loadDomainInfo($domain);
+      if ($info === null) {
+        throw new RuntimeException('Failed to load domain information');
+      }
 
       if ($checks['expirationDate'] === true) {
         if ($info->expirationDate === 0) {
@@ -247,10 +247,10 @@ final class CheckDomainCommand extends Command {
         }
       }
 
-      if ($checks['transferProhibited'] === true) {
+      if ($checks['statusCodes'] === true) {
         if ($info->states === []) {
           $errors[] = sprintf(
-            'Failed to retrieve the status for domain "%s"',
+            'Failed to retrieve the status code list for domain "%s"',
             $domain
           );
 
@@ -261,11 +261,22 @@ final class CheckDomainCommand extends Command {
           }
         }
 
-        if (in_array('clienttransferprohibited', $info->states, true) === false) {
+        $output->writeln(
+          sprintf(
+            'Active status flags <options=bold>%s</>',
+            implode('</>, <options=bold>', $info->states)
+          ),
+          OutputInterface::VERBOSITY_DEBUG
+        );
+
+        $diff = array_diff(
+          array_map('strtolower', $statusCodes),
+          array_map('strtolower', $info->states)
+        );
+        if ($diff !== []) {
           $errors[] = sprintf(
-            'Domain "%s" does not have the "clientTransferProhibited" status activated (active: %s)',
-            $domain,
-            implode(', ', $info->states)
+            'Not all required status flags are active (missing: %s)',
+            implode(', ', $diff)
           );
 
           if ($failFast === true) {
