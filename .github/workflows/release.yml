@@ -34,6 +34,8 @@ jobs:
 
       - name: Check that the PHAR works
         run: bin/watchr.phar --ansi --version
+        env:
+          BOX_REQUIREMENTS_CHECKER_LOG_TO_STDOUT: 1
 
       - name: Import GPG Key
         uses: crazy-max/ghaction-import-gpg@72b6676b71ab476b77e676928516f6982eef7a41
