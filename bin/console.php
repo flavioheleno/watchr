@@ -6,8 +6,13 @@ date_default_timezone_set('UTC');
 setlocale(LC_ALL, 'en_US.UTF8');
 error_reporting(E_ALL);
 
-require_once dirname(__DIR__) . '/vendor/autoload.php';
+if (in_array(PHP_SAPI, ['cli', 'phpdbg', 'embed'], true) === false) {
+  echo PHP_EOL, 'This app may only be invoked from a command-line, got "', PHP_SAPI, '"', PHP_EOL;
 
+  exit(1);
+}
+
+require_once dirname(__DIR__) . '/vendor/autoload.php';
 use Composer\InstalledVersions;
 use DI\ContainerBuilder;
 use Watchr\Console\Commands\Check\CheckAllCommand;
