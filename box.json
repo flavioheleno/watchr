@@ -1,5 +1,13 @@
 {
   "algorithm": "SHA256",
+  "banner": [
+    "This file is part of the watchr project.",
+    "",
+    "(c) Flavio Heleno <flaviohbatista@gmail.com>",
+    "",
+    "This source file is subject to the MIT License that is bundled",
+    "with this source code in the file LICENSE."
+  ],
   "compactors": [
     "KevinGH\\Box\\Compactor\\Json",
     "KevinGH\\Box\\Compactor\\Php",
