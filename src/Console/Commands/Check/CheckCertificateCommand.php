@@ -262,7 +262,7 @@ final class CheckCertificateCommand extends Command {
           $errors[] = sprintf(
             'Certificate for domain "%s" expired %s ago',
             $domain,
-            $this->timeAgo($interval)
+            $this->humanReadableInterval($interval)
           );
 
           if ($failFast === true) {
@@ -485,7 +485,7 @@ final class CheckCertificateCommand extends Command {
         $output->writeln(
           sprintf(
             'OCSP Revocation list last update: <options=bold>%s</> (%s)',
-            $this->timeAgo($interval),
+            $this->humanReadableInterval($interval),
             $response->getThisUpdate()->format(DateTimeInterface::ATOM)
           ),
           OutputInterface::VERBOSITY_DEBUG

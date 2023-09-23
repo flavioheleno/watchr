@@ -3,10 +3,8 @@ declare(strict_types = 1);
 
 namespace Watchr\Console\Commands\Check;
 
-use DateTimeImmutable;
 use DateTimeInterface;
 use Exception;
-use Iodev\Whois\Whois;
 use Psr\Clock\ClockInterface;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -16,6 +14,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Watchr\Console\Services\DomainService;
 use Watchr\Console\Traits\DateUtilsTrait;
 use Watchr\Console\Traits\ErrorPrinterTrait;
 
@@ -25,7 +24,7 @@ final class CheckDomainCommand extends Command {
   use ErrorPrinterTrait;
 
   private ClockInterface $clock;
-  private Whois $whois;
+  private DomainService $domainService;
 
   protected function configure(): void {
     $this
@@ -143,13 +142,13 @@ final class CheckDomainCommand extends Command {
     );
 
     try {
-      $info = $this->whois->loadDomainInfo($domain);
+      $info = $this->domainService->lookup($domain);
       if ($info === null) {
         throw new RuntimeException('Failed to load domain information');
       }
 
       if ($checks['expirationDate'] === true) {
-        if ($info->expirationDate === 0) {
+        if ($info->expirationDate === null) {
           $errors[] = sprintf(
             'Failed to retrieve the expiration date for domain "%s"',
             $domain
@@ -160,22 +159,21 @@ final class CheckDomainCommand extends Command {
           }
         }
 
-        $expiresAt = (new DateTimeImmutable())->setTimestamp($info->expirationDate);
         $output->writeln(
           sprintf(
             'Domain expiration date: <options=bold>%s</> (%d)',
-            $expiresAt->format(DateTimeInterface::ATOM),
-            $info->expirationDate
+            $info->expirationDate->format(DateTimeInterface::ATOM),
+            $info->expirationDate->getTimestamp()
           ),
           OutputInterface::VERBOSITY_DEBUG
         );
 
-        $interval = $now->diff($expiresAt);
+        $interval = $now->diff($info->expirationDate);
         if ($interval->days <= 0) {
           $errors[] = sprintf(
             'Domain "%s" expired %s ago',
             $domain,
-            $this->timeAgo($interval)
+            $this->humanReadableInterval($interval)
           );
 
           if ($failFast === true) {
@@ -312,11 +310,11 @@ final class CheckDomainCommand extends Command {
 
   public function __construct(
     ClockInterface $clock,
-    Whois $whois
+    DomainService $domainService
   ) {
     parent::__construct();
 
     $this->clock = $clock;
-    $this->whois = $whois;
+    $this->domainService = $domainService;
   }
 }

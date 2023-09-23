@@ -5,6 +5,7 @@ use AcmePhp\Ssl\Parser\CertificateParser;
 use DI\ContainerBuilder;
 use Iodev\Whois\Factory;
 use Iodev\Whois\Whois;
+use Juanparati\RDAPLib\RDAPClient;
 use Ocsp\CertificateInfo;
 use Ocsp\CertificateLoader;
 use Ocsp\Ocsp;
@@ -29,6 +30,9 @@ return static function (ContainerBuilder $builder): void {
       },
       Ocsp::class => static function (ContainerInterface $container): Ocsp {
         return new Ocsp();
+      },
+      RDAPClient::class => static function (ContainerInterface $container): RDAPClient {
+        return new RDAPClient(['domain' => 'https://rdap.org/domain/']);
       },
       Whois::class => static function (ContainerInterface $container): Whois {
         return Factory::get()->createWhois();
