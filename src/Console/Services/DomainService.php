@@ -75,7 +75,7 @@ class DomainService {
 
       return new DomainInfo(
         $domain,
-        'https://rdap.verisign.com/com/v1/domain/',
+        'https://rdap.org/domain/',
         array_reduce(
           array_filter(
             $info['nameservers'],
