@@ -4,8 +4,9 @@ declare(strict_types = 1);
 namespace Watchr\Console\DataObjects\Domain;
 
 use DateTimeInterface;
+use JsonSerializable;
 
-final class DomainInfo {
+final class DomainInfo implements JsonSerializable {
   public readonly string $domainName;
   public readonly string $whoisServer;
   /**
@@ -49,5 +50,20 @@ final class DomainInfo {
     $this->owner = $owner;
     $this->registrar = $registrar;
     $this->dnssec = $dnssec;
+  }
+
+  public function jsonSerialize(): mixed {
+    return [
+      'domainName' => $this->domainName,
+      'whoisServer' => $this->whoisServer,
+      'nameServers' => $this->nameServers,
+      'creationDate' => $this->creationDate->format(DateTimeInterface::ATOM),
+      'expirationDate' => $this->expirationDate->format(DateTimeInterface::ATOM),
+      'updatedDate' => $this->updatedDate->format(DateTimeInterface::ATOM),
+      'states' => $this->states,
+      'owner' => $this->owner,
+      'registrar' => $this->registrar,
+      'dnssec' => $this->dnssec
+    ];
   }
 }

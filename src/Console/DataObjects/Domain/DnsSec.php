@@ -3,7 +3,9 @@ declare(strict_types = 1);
 
 namespace Watchr\Console\DataObjects\Domain;
 
-final class DnsSec {
+use JsonSerializable;
+
+final class DnsSec implements JsonSerializable {
   public readonly int|null $keyTag;
   public readonly int|null $algorithm;
   public readonly int|null $digestType;
@@ -19,5 +21,14 @@ final class DnsSec {
     $this->algorithm = $algorithm;
     $this->digestType = $digestType;
     $this->digest = $digest;
+  }
+
+  public function jsonSerialize(): mixed {
+    return [
+      'keyTag' => $this->keyTag,
+      'algorithm' => $this->algorithm,
+      'digestType' => $this->digestType,
+      'digest' => $this->digest
+    ];
   }
 }

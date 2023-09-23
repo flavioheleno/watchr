@@ -13,13 +13,15 @@ if (in_array(PHP_SAPI, ['cli', 'phpdbg', 'embed'], true) === false) {
 }
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
+
 use Composer\InstalledVersions;
 use DI\ContainerBuilder;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\CommandLoader\ContainerCommandLoader;
 use Watchr\Console\Commands\Check\CheckAllCommand;
 use Watchr\Console\Commands\Check\CheckCertificateCommand;
 use Watchr\Console\Commands\Check\CheckDomainCommand;
-use Symfony\Component\Console\Application;
-use Symfony\Component\Console\CommandLoader\ContainerCommandLoader;
+use Watchr\Console\Commands\View\ViewDomainCommand;
 
 define(
   '__VERSION__',
@@ -52,7 +54,8 @@ $app->setCommandLoader(
     [
       CheckAllCommand::getDefaultName() => CheckAllCommand::class,
       CheckCertificateCommand::getDefaultName() => CheckCertificateCommand::class,
-      CheckDomainCommand::getDefaultName() => CheckDomainCommand::class
+      CheckDomainCommand::getDefaultName() => CheckDomainCommand::class,
+      ViewDomainCommand::getDefaultName() => ViewDomainCommand::class
     ]
   )
 );
