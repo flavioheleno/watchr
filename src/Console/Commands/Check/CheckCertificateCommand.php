@@ -34,6 +34,29 @@ final class CheckCertificateCommand extends Command {
   private ClockInterface $clock;
   private Ocsp $ocsp;
 
+  /**
+   * @param string[] $haystack
+   */
+  private function subjectMatch(string $needle, array $haystack): bool {
+    $needleParts = explode('.', $needle);
+    array_shift($needleParts); // remove the host from $needle
+    foreach ($haystack as $candidate) {
+      if ($needle === $candidate) {
+        return true;
+      }
+
+      if (str_starts_with($candidate, '*.') === true) {
+        $candidateParts = explode('.', substr($candidate, 2));
+
+        if ($needleParts === $candidateParts) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   protected function configure(): void {
     $this
       ->addOption(
@@ -230,10 +253,11 @@ final class CheckCertificateCommand extends Command {
       );
 
       $parsedCertificate = $this->certParser->parse($certChain);
-      if (
-        $domain !== $parsedCertificate->getSubject() &&
-        in_array($domain, $parsedCertificate->getSubjectAlternativeNames(), true) === false
-      ) {
+      $listOfSubjects = [
+        $parsedCertificate->getSubject(),
+        ...$parsedCertificate->getSubjectAlternativeNames()
+      ];
+      if ($this->subjectMatch($domain, $listOfSubjects) === false) {
         $errors[] = sprintf(
           'Domain "%s" does not match the certificate subject (%s) or any of the alternative names (%s)',
           $domain,
