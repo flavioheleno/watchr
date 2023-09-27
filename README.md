@@ -2,6 +2,11 @@
 
 **Watchr** is a command-line utility to check for Domain Name and TLS Certificates expiration dates.
 
+## Acknowledgements
+
+This project imports the source code of [StreamInterface](src/Console/Contracts/Streams/StreamInterface.php),
+[NullStream](src/Console/Streams/NullStream.php) and [Stream](src/Console/Streams/Stream.php) from
+[guzzle/streams](https://github.com/guzzle/streams) project.
 
 ## License
 
