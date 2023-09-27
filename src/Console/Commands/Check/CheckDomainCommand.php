@@ -138,7 +138,7 @@ final class CheckDomainCommand extends Command {
 
     $output->writeln(
       'Starting domain checks',
-      OutputInterface::VERBOSITY_DEBUG
+      OutputInterface::VERBOSITY_VERBOSE
     );
 
     try {
@@ -165,7 +165,7 @@ final class CheckDomainCommand extends Command {
             $info->expirationDate->format(DateTimeInterface::ATOM),
             $info->expirationDate->getTimestamp()
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         $interval = $now->diff($info->expirationDate);
@@ -203,7 +203,7 @@ final class CheckDomainCommand extends Command {
             'Domain expires in: <options=bold>%d days</>',
             $interval->days
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
       }
 
@@ -226,7 +226,7 @@ final class CheckDomainCommand extends Command {
             'Registrar name: <options=bold>%s</>',
             $info->registrar
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         if ($info->registrar !== $registrarName) {
@@ -264,7 +264,7 @@ final class CheckDomainCommand extends Command {
             'Active status flags <options=bold>%s</>',
             implode('</>, <options=bold>', $info->states)
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         $diff = array_diff(
@@ -296,7 +296,7 @@ final class CheckDomainCommand extends Command {
 
     $output->writeln(
       'Finished domain checks',
-      OutputInterface::VERBOSITY_DEBUG
+      OutputInterface::VERBOSITY_VERBOSE
     );
 
     if (count($errors) > 0) {
