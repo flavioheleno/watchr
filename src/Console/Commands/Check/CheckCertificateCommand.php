@@ -195,7 +195,7 @@ final class CheckCertificateCommand extends Command {
 
     $output->writeln(
       'Starting certificate checks',
-      OutputInterface::VERBOSITY_DEBUG
+      OutputInterface::VERBOSITY_VERBOSE
     );
 
     try {
@@ -229,7 +229,7 @@ final class CheckCertificateCommand extends Command {
           'Certificate chain size: <options=bold>%d</>',
           count($certInfo)
         ),
-        OutputInterface::VERBOSITY_DEBUG
+        OutputInterface::VERBOSITY_VERBOSE
       );
 
       // build the certificate chain to be parsed
@@ -278,7 +278,7 @@ final class CheckCertificateCommand extends Command {
             'Certificate expiration date: <options=bold>%s</>',
             $parsedCertificate->getValidTo()->format(DateTimeInterface::ATOM),
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         $interval = $now->diff($parsedCertificate->getValidTo());
@@ -316,7 +316,7 @@ final class CheckCertificateCommand extends Command {
             'Certificate expires in: <options=bold>%d days</>',
             $interval->days
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
       }
 
@@ -337,7 +337,7 @@ final class CheckCertificateCommand extends Command {
             'Certificate Fingerprint: <options=bold>%s</>',
             $certFingerprint
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         if ($fingerprint !== $certFingerprint) {
@@ -372,7 +372,7 @@ final class CheckCertificateCommand extends Command {
             'Certificate Serial Number: <options=bold>%s</>',
             $parsedCertificate->getSerialNumber()
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         if ($parsedCertificate->getSerialNumber() !== $serialNumber) {
@@ -407,7 +407,7 @@ final class CheckCertificateCommand extends Command {
             'Certificate Issuer Name: <options=bold>%s</>',
             $parsedCertificate->getIssuer()
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
 
         if ($parsedCertificate->getIssuer() !== $issuerName) {
@@ -512,7 +512,7 @@ final class CheckCertificateCommand extends Command {
             $this->humanReadableInterval($interval),
             $response->getThisUpdate()->format(DateTimeInterface::ATOM)
           ),
-          OutputInterface::VERBOSITY_DEBUG
+          OutputInterface::VERBOSITY_VERBOSE
         );
       }
     } catch (Exception $exception) {
@@ -527,7 +527,7 @@ final class CheckCertificateCommand extends Command {
 
     $output->writeln(
       'Finished certificate checks',
-      OutputInterface::VERBOSITY_DEBUG
+      OutputInterface::VERBOSITY_VERBOSE
     );
 
     if (count($errors) > 0) {
