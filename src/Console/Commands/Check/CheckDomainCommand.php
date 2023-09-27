@@ -79,7 +79,7 @@ final class CheckDomainCommand extends Command {
       $output->writeln('');
       $table = new Table($output);
       $table
-        ->setHeaders(['Verification', 'Status'])
+        ->setHeaders(['Verification', 'Status', 'Value'])
         ->addRows(
           [
             [
@@ -155,6 +155,8 @@ final class CheckDomainCommand extends Command {
           );
 
           if ($failFast === true) {
+            $this->printErrors($errors, $output);
+
             return Command::FAILURE;
           }
         }
