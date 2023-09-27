@@ -10,10 +10,15 @@ trait ErrorPrinterTrait {
    * @param string[] $errors
    */
   private function printErrors(array $errors, OutputInterface $output): void {
-    if (count($errors) > 1) {
+    $errorCount = count($errors);
+    if ($errorCount === 0) {
+      return;
+    }
+
+    if ($errorCount > 1) {
       $output->writeln(
         [
-          'Found ' . count($errors) . ' errors:',
+          "Found {$errorCount} errors:",
           ...array_map(
             static function (string $error): string {
               return " - {$error}";
