@@ -12,7 +12,7 @@ use Ocsp\Ocsp;
 use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
 use Symfony\Component\Clock\NativeClock;
-use Watchr\Console\Services\HTTP\HttpCheckService;
+use Watchr\Console\Services\HttpService;
 
 return static function (ContainerBuilder $builder): void {
   $builder->addDefinitions(
@@ -29,8 +29,8 @@ return static function (ContainerBuilder $builder): void {
       ClockInterface::class => static function (ContainerInterface $container): ClockInterface {
         return new NativeClock();
       },
-      HttpCheckService::class => static function (ContainerInterface $container): HttpCheckService {
-        return new HttpCheckService(
+      HttpService::class => static function (ContainerInterface $container): HttpService {
+        return new HttpService(
           30,
           120,
           sprintf('watchr (PHP %s; %s)', PHP_VERSION, PHP_OS_FAMILY)

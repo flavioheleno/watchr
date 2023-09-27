@@ -21,7 +21,9 @@ use Symfony\Component\Console\CommandLoader\ContainerCommandLoader;
 use Watchr\Console\Commands\Check\CheckAllCommand;
 use Watchr\Console\Commands\Check\CheckCertificateCommand;
 use Watchr\Console\Commands\Check\CheckDomainCommand;
+use Watchr\Console\Commands\Check\CheckHttpResponseCommand;
 use Watchr\Console\Commands\View\ViewDomainCommand;
+use Watchr\Console\Commands\View\ViewHttpResponseCommand;
 
 define(
   '__VERSION__',
@@ -55,7 +57,9 @@ $app->setCommandLoader(
       CheckAllCommand::getDefaultName() => CheckAllCommand::class,
       CheckCertificateCommand::getDefaultName() => CheckCertificateCommand::class,
       CheckDomainCommand::getDefaultName() => CheckDomainCommand::class,
-      ViewDomainCommand::getDefaultName() => ViewDomainCommand::class
+      CheckHttpResponseCommand::getDefaultName() => CheckHttpResponseCommand::class,
+      ViewDomainCommand::getDefaultName() => ViewDomainCommand::class,
+      ViewHttpResponseCommand::getDefaultName() => ViewHttpResponseCommand::class
     ]
   )
 );
