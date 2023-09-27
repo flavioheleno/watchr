@@ -90,36 +90,37 @@ final class CheckHttpResponseCommand extends Command {
   }
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
+
+    $method = HttpRequestMethodEnum::tryFrom(strtoupper((string)$input->getOption('method')));
+    $headers = (array)$input->getOption('add-header');
+    $body = (string)$input->getOption('body');
+
+    $authentication = null;
+    $authPath = (string)$input->getOption('auth-path');
+    if ($authPath !== '' && is_readable($authPath)) {}
+
+    $statusCodes = (array)$input->getOption('status-code');
+
+    $matchKeywords = (array)$input->getOption('match-keyword');
+    $notMatchKeywords = (array)$input->getOption('not-match-keyword');
+    $noBody = (bool)$input->getOption('no-body');
+
+    $checks = [
+      'statusCodes' => $statusCodes !== [],
+      'matchKeywords' => $matchKeywords !== [],
+      'notMatchKeywords' => $notMatchKeywords !== [],
+      'noBody' => $noBody === true
+    ];
+
+    $failFast = (bool)$input->getOption('fail-fast');
+    $url = (string)$input->getArgument('url');
+
     try {
-      $url = (string)$input->getArgument('url');
       if (filter_var($url, FILTER_VALIDATE_URL) === false) {
         throw new InvalidArgumentException(
           'argument url must be a valid url'
         );
       }
-
-      $method = HttpRequestMethodEnum::tryFrom(strtoupper((string)$input->getOption('method')));
-      $headers = (array)$input->getOption('add-header');
-      $body = (string)$input->getOption('body');
-
-      $authentication = null;
-      $authPath = (string)$input->getOption('auth-path');
-      if ($authPath !== '' && is_readable($authPath)) {}
-
-      $statusCodes = (array)$input->getOption('status-code');
-
-      $matchKeywords = (array)$input->getOption('match-keyword');
-      $notMatchKeywords = (array)$input->getOption('not-match-keyword');
-      $noBody = (bool)$input->getOption('no-body');
-
-      $checks = [
-        'statusCodes' => $statusCodes !== [],
-        'matchKeywords' => $matchKeywords !== [],
-        'notMatchKeywords' => $notMatchKeywords !== [],
-        'noBody' => $noBody === true
-      ];
-
-      $failFast = (bool)$input->getOption('fail-fast');
 
       if ($output->isDebug() === true) {
         $output->writeln('');
@@ -269,12 +270,9 @@ final class CheckHttpResponseCommand extends Command {
       }
     } catch (Exception $exception) {
       $errors[] = $exception->getMessage();
+      $this->printErrors($errors, $output);
 
-      if ($failFast === true) {
-        $this->printErrors($errors, $output);
-
-        return Command::FAILURE;
-      }
+      return Command::FAILURE;
     }
 
     $output->writeln(

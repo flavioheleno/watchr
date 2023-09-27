@@ -7,6 +7,7 @@ use AcmePhp\Ssl\Certificate;
 use AcmePhp\Ssl\Parser\CertificateParser;
 use DateTimeInterface;
 use Exception;
+use InvalidArgumentException;
 use Ocsp\CertificateInfo;
 use Ocsp\CertificateLoader;
 use Ocsp\Ocsp;
@@ -120,85 +121,79 @@ final class CheckCertificateCommand extends Command {
     $failFast = (bool)$input->getOption('fail-fast');
     $domain = $input->getArgument('domain');
 
-    if ($output->isDebug() === true) {
-      $output->writeln('');
-      $table = new Table($output);
-      $table
-        ->setHeaders(['Verification', 'Status'])
-        ->addRows(
-          [
-            [
-              'Expiration Date',
-              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $expirationThreshold > 0 ? "{$expirationThreshold} days" : '-'
-            ],
-            [
-              'SHA-256 Fingerprint',
-              ($checks['fingerprint'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $fingerprint ?: '-'
-            ],
-            [
-              'Serial Number',
-              ($checks['serialNumber'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $serialNumber ?: '-'
-            ],
-            [
-              'Issuer Name',
-              ($checks['issuerName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $issuerName ?: '-'
-            ],
-            [
-              'OCSP Revoked',
-              ($checks['ocspRevoked'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              '-'
-            ]
-          ]
-        )
-        ->render();
-
-      $output->writeln('');
-    }
-
     $errors = [];
-    if (
-      strpos($domain, '.') === false ||
-      filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false
-    ) {
-      $errors[] = 'argument <options=bold>domain</> contains an invalid domain name';
-    }
+    try {
+      if (
+        strpos($domain, '.') === false ||
+        filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false
+      ) {
+        throw new InvalidArgumentException('argument domain must be a valid domain name');
+      }
 
-    if (count($errors) > 0) {
-      $this->printErrors($errors, $output);
+      if ($output->isDebug() === true) {
+        $output->writeln('');
+        $table = new Table($output);
+        $table
+          ->setHeaders(['Verification', 'Status', 'Value'])
+          ->addRows(
+            [
+              [
+                'Expiration Date',
+                ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $expirationThreshold > 0 ? "{$expirationThreshold} days" : '-'
+              ],
+              [
+                'SHA-256 Fingerprint',
+                ($checks['fingerprint'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $fingerprint ?: '-'
+              ],
+              [
+                'Serial Number',
+                ($checks['serialNumber'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $serialNumber ?: '-'
+              ],
+              [
+                'Issuer Name',
+                ($checks['issuerName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $issuerName ?: '-'
+              ],
+              [
+                'OCSP Revoked',
+                ($checks['ocspRevoked'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                '-'
+              ]
+            ]
+          )
+          ->render();
 
-      return Command::FAILURE;
-    }
+        $output->writeln('');
+      }
 
-    $needCertificate = (
-      $checks['expirationDate'] ||
-      $checks['fingerprint'] ||
-      $checks['serialNumber'] ||
-      $checks['issuerName'] ||
-      $checks['ocspRevoked']
-    );
+      $needCertificate = (
+        $checks['expirationDate'] ||
+        $checks['fingerprint'] ||
+        $checks['serialNumber'] ||
+        $checks['issuerName'] ||
+        $checks['ocspRevoked']
+      );
 
-    if ($needCertificate === false) {
+      if ($needCertificate === false) {
+        $output->writeln(
+          'All certificate verifications are disabled, leaving',
+          OutputInterface::VERBOSITY_VERBOSE
+        );
+
+        return Command::SUCCESS;
+      }
+
+      // required for expiration checks
+      $now = $this->clock->now();
+
       $output->writeln(
-        'All certificate verifications are disabled, leaving',
+        'Starting certificate checks',
         OutputInterface::VERBOSITY_VERBOSE
       );
 
-      return Command::SUCCESS;
-    }
-
-    // required for expiration checks
-    $now = $this->clock->now();
-
-    $output->writeln(
-      'Starting certificate checks',
-      OutputInterface::VERBOSITY_VERBOSE
-    );
-
-    try {
       $hCurl = curl_init("https://{$domain}/");
       curl_setopt($hCurl, CURLOPT_RETURNTRANSFER, false);
       curl_setopt($hCurl, CURLOPT_CUSTOMREQUEST, 'HEAD');
@@ -517,12 +512,9 @@ final class CheckCertificateCommand extends Command {
       }
     } catch (Exception $exception) {
       $errors[] = $exception->getMessage();
+      $this->printErrors($errors, $output);
 
-      if ($failFast === true) {
-        $this->printErrors($errors, $output);
-
-        return Command::FAILURE;
-      }
+      return Command::FAILURE;
     }
 
     $output->writeln(

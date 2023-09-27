@@ -5,6 +5,7 @@ namespace Watchr\Console\Commands\Check;
 
 use DateTimeInterface;
 use Exception;
+use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -75,73 +76,67 @@ final class CheckDomainCommand extends Command {
     $failFast = (bool)$input->getOption('fail-fast');
     $domain = $input->getArgument('domain');
 
-    if ($output->isDebug() === true) {
-      $output->writeln('');
-      $table = new Table($output);
-      $table
-        ->setHeaders(['Verification', 'Status', 'Value'])
-        ->addRows(
-          [
-            [
-              'Expiration Date',
-              ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $expirationThreshold > 0 ? "{$expirationThreshold} days" : '-'
-            ],
-            [
-              'Registrar Name',
-              ($checks['registrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $registrarName ?: '-'
-            ],
-            [
-              'Status Codes',
-              ($checks['statusCodes'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-              $statusCodes === [] ? '-' : implode(', ', $statusCodes)
-            ]
-          ]
-        )
-        ->render();
-
-      $output->writeln('');
-    }
-
     $errors = [];
-    if (
-      strpos($domain, '.') === false ||
-      filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false
-    ) {
-      $errors[] = 'argument <options=bold>domain</> contains an invalid domain name';
-    }
+    try {
+      if (
+        strpos($domain, '.') === false ||
+        filter_var($domain, FILTER_VALIDATE_DOMAIN, ['flags' => FILTER_FLAG_HOSTNAME]) === false
+      ) {
+        throw new InvalidArgumentException('argument domain must be a valid root domain');
+      }
 
-    if (count($errors) > 0) {
-      $this->printErrors($errors, $output);
+      if ($output->isDebug() === true) {
+        $output->writeln('');
+        $table = new Table($output);
+        $table
+          ->setHeaders(['Verification', 'Status', 'Value'])
+          ->addRows(
+            [
+              [
+                'Expiration Date',
+                ($checks['expirationDate'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $expirationThreshold > 0 ? "{$expirationThreshold} days" : '-'
+              ],
+              [
+                'Registrar Name',
+                ($checks['registrarName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $registrarName ?: '-'
+              ],
+              [
+                'Status Codes',
+                ($checks['statusCodes'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
+                $statusCodes === [] ? '-' : implode(', ', $statusCodes)
+              ]
+            ]
+          )
+          ->render();
 
-      return Command::FAILURE;
-    }
+        $output->writeln('');
+      }
 
-    $needWhois = (
-      $checks['expirationDate'] ||
-      $checks['registrarName'] ||
-      $checks['statusCodes']
-    );
+      $needWhois = (
+        $checks['expirationDate'] ||
+        $checks['registrarName'] ||
+        $checks['statusCodes']
+      );
 
-    if ($needWhois === false) {
+      if ($needWhois === false) {
+        $output->writeln(
+          'All domain verifications are disabled, leaving',
+          OutputInterface::VERBOSITY_VERBOSE
+        );
+
+        return Command::SUCCESS;
+      }
+
+      // required for expiration checks
+      $now = $this->clock->now();
+
       $output->writeln(
-        'All domain verifications are disabled, leaving',
+        'Starting domain checks',
         OutputInterface::VERBOSITY_VERBOSE
       );
 
-      return Command::SUCCESS;
-    }
-
-    // required for expiration checks
-    $now = $this->clock->now();
-
-    $output->writeln(
-      'Starting domain checks',
-      OutputInterface::VERBOSITY_VERBOSE
-    );
-
-    try {
       $info = $this->domainService->lookup($domain);
       if ($info === null) {
         throw new RuntimeException('Failed to load domain information');
@@ -288,12 +283,9 @@ final class CheckDomainCommand extends Command {
       }
     } catch (Exception $exception) {
       $errors[] = $exception->getMessage();
+      $this->printErrors($errors, $output);
 
-      if ($failFast === true) {
-        $this->printErrors($errors, $output);
-
-        return Command::FAILURE;
-      }
+      return Command::FAILURE;
     }
 
     $output->writeln(
