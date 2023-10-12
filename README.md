@@ -1,6 +1,8 @@
 # watchr
 
-**Watchr** is a command-line utility to check for Domain Name and TLS Certificates expiration dates.
+**watchr** is a command-line utility to check for Domain Name and TLS Certificates expiration dates.
+
+Fully automate watchr checks with GitHub Actions using [watchr-action](https://github.com/flavioheleno/watchr-action).
 
 ## Acknowledgements
 
