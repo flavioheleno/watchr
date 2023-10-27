@@ -12,6 +12,12 @@ if (in_array(PHP_SAPI, ['cli', 'phpdbg', 'embed'], true) === false) {
   exit(1);
 }
 
+if (extension_loaded('curl') === false) {
+  echo PHP_EOL, 'This app requires curl extension to be loaded', PHP_EOL;
+
+  exit(1);
+}
+
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use Composer\InstalledVersions;
