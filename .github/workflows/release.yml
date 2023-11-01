@@ -50,6 +50,7 @@ jobs:
           gpg
           --batch
           --yes
+          --pinentry-mode loopback
           --local-user flaviohbatista@gmail.com
           --passphrase ${{ secrets.GPG_PASSPHRASE }}
           --detach-sign
