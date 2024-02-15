@@ -31,8 +31,8 @@ final class CheckCertificateCommand extends Command {
    * @param string[] $haystack
    */
   private function subjectMatch(string $needle, array $haystack): bool {
-    $needleParts = explode('.', $needle);
-    array_shift($needleParts); // remove the host from $needle
+    // remove the host from $needle
+    $needleParts = array_slice(explode('.', $needle), 1);
     foreach ($haystack as $candidate) {
       if ($needle === $candidate) {
         return true;
@@ -199,7 +199,7 @@ final class CheckCertificateCommand extends Command {
       );
 
       if (
-        $domain !== $cert0->subjectCommonName ||
+        $domain !== $cert0->subjectCommonName &&
         $this->subjectMatch($domain, $cert0->subjectAlternativeNames) === false
       ) {
         $errors[] = sprintf(
