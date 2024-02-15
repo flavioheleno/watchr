@@ -29,25 +29,25 @@ final class HttpService {
   ) {
     $this->stdOpts = [
       CURLOPT_AUTOREFERER => true,
-      CURLOPT_COOKIESESSION => true,
       CURLOPT_CERTINFO => true,
-      CURLOPT_FAILONERROR => false,
+      CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+      CURLOPT_COOKIEFILE => '',
+      CURLOPT_COOKIELIST => 'RELOAD',
+      CURLOPT_COOKIESESSION => true,
       CURLOPT_DNS_SHUFFLE_ADDRESSES => true,
       CURLOPT_DNS_USE_GLOBAL_CACHE => false,
+      CURLOPT_ENCODING => '',
+      CURLOPT_FAILONERROR => false,
       CURLOPT_FILETIME => true,
       CURLOPT_FOLLOWLOCATION => false,
       CURLOPT_FORBID_REUSE => true,
       CURLOPT_FRESH_CONNECT => true,
-      CURLOPT_TCP_NODELAY => true,
       CURLOPT_HEADER => false,
       CURLOPT_HTTP_CONTENT_DECODING => true,
       CURLOPT_RETURNTRANSFER => true,
       CURLOPT_TCP_FASTOPEN => true,
-      CURLOPT_CONNECTTIMEOUT => $connectTimeout,
-      CURLOPT_ENCODING => '',
+      CURLOPT_TCP_NODELAY => true,
       CURLOPT_TIMEOUT => $timeout,
-      CURLOPT_COOKIEFILE => '',
-      CURLOPT_COOKIELIST => 'RELOAD',
       CURLOPT_USERAGENT => $userAgent
     ];
   }
@@ -126,7 +126,7 @@ final class HttpService {
     }
 
     $hCurl = curl_init($url);
-    if (curl_setopt_array($hCurl, $this->stdOpts + $opts) === false) {
+    if (curl_setopt_array($hCurl, $opts + $this->stdOpts) === false) {
       throw new RuntimeException('Failed to set curl options');
     }
 
