@@ -35,7 +35,6 @@
     "ext-curl": "*",
     "ext-filter": "*",
     "ext-openssl": "*",
-    "acmephp/ssl": "^2.1",
     "guzzlehttp/guzzle": "^7.8",
     "io-developer/php-whois": "^4.1",
     "juanparati/rdap-lib": "^2.0",

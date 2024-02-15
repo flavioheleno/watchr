@@ -3,15 +3,9 @@ declare(strict_types = 1);
 
 namespace Watchr\Console\Commands\Check;
 
-use AcmePhp\Ssl\Certificate;
-use AcmePhp\Ssl\Parser\CertificateParser;
 use DateTimeInterface;
 use Exception;
 use InvalidArgumentException;
-use Ocsp\CertificateInfo;
-use Ocsp\CertificateLoader;
-use Ocsp\Ocsp;
-use Ocsp\Response;
 use Psr\Clock\ClockInterface;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -21,6 +15,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Watchr\Console\Services\CertificateService;
 use Watchr\Console\Traits\DateUtilsTrait;
 use Watchr\Console\Traits\ErrorPrinterTrait;
 
@@ -29,11 +24,8 @@ final class CheckCertificateCommand extends Command {
   use DateUtilsTrait;
   use ErrorPrinterTrait;
 
-  private CertificateInfo $certInfo;
-  private CertificateLoader $certLoader;
-  private CertificateParser $certParser;
+  private CertificateService $certificateService;
   private ClockInterface $clock;
-  private Ocsp $ocsp;
 
   /**
    * @param string[] $haystack
@@ -70,19 +62,19 @@ final class CheckCertificateCommand extends Command {
       ->addOption(
         'fingerprint',
         'p',
-        InputOption::VALUE_REQUIRED,
+        InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
         'Match the certificate SHA-256 Fingerprint'
       )
       ->addOption(
         'serial-number',
         's',
-        InputOption::VALUE_REQUIRED,
+        InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
         'Match the certificate Serial Number'
       )
       ->addOption(
         'issuer-name',
         'i',
-        InputOption::VALUE_REQUIRED,
+        InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
         'Match the Certificate Authority (CA) that issued the TLS Certificate'
       )
       ->addOption(
@@ -106,15 +98,15 @@ final class CheckCertificateCommand extends Command {
 
   protected function execute(InputInterface $input, OutputInterface $output): int {
     $expirationThreshold = (int)$input->getOption('expiration-threshold');
-    $fingerprint = (string)$input->getOption('fingerprint');
-    $serialNumber = (string)$input->getOption('serial-number');
-    $issuerName = (string)$input->getOption('issuer-name');
+    $fingerprints = (array)$input->getOption('fingerprint');
+    $serialNumbers = (array)$input->getOption('serial-number');
+    $issuerNames = (array)$input->getOption('issuer-name');
 
     $checks = [
       'expirationDate' => $expirationThreshold > 0,
-      'fingerprint' => $fingerprint !== '',
-      'serialNumber' => $serialNumber !== '',
-      'issuerName' => $issuerName !== '',
+      'fingerprint' => empty($fingerprints) === false && function_exists('openssl_x509_fingerprint') === true,
+      'serialNumber' => empty($serialNumbers) === false,
+      'issuerName' => empty($issuerNames) === false,
       'ocspRevoked' => (bool)$input->getOption('skip-ocsp-revoked') === false
     ];
 
@@ -122,6 +114,7 @@ final class CheckCertificateCommand extends Command {
     $domain = $input->getArgument('domain');
 
     $errors = [];
+    $warnings = [];
     try {
       if (
         strpos($domain, '.') === false ||
@@ -145,17 +138,17 @@ final class CheckCertificateCommand extends Command {
               [
                 'SHA-256 Fingerprint',
                 ($checks['fingerprint'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-                $fingerprint ?: '-'
+                empty($fingerprints) ? '-' : implode(', ', $fingerprints)
               ],
               [
                 'Serial Number',
                 ($checks['serialNumber'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-                $serialNumber ?: '-'
+                empty($serialNumbers) ? '-' : implode(', ', $serialNumbers)
               ],
               [
                 'Issuer Name',
                 ($checks['issuerName'] ? '<fg=green>enabled</>' : '<fg=red>disabled</>'),
-                $issuerName ?: '-'
+                empty($issuerNames) ? '-' : implode(', ', $issuerNames)
               ],
               [
                 'OCSP Revoked',
@@ -194,73 +187,30 @@ final class CheckCertificateCommand extends Command {
         OutputInterface::VERBOSITY_VERBOSE
       );
 
-      $hCurl = curl_init("https://{$domain}/");
-      curl_setopt($hCurl, CURLOPT_RETURNTRANSFER, false);
-      curl_setopt($hCurl, CURLOPT_CUSTOMREQUEST, 'HEAD');
-      curl_setopt($hCurl, CURLOPT_NOBODY, true);
-      curl_setopt($hCurl, CURLOPT_CERTINFO, true);
-      curl_exec($hCurl);
-      if (curl_errno($hCurl) > 0) {
-        $curlError = curl_error($hCurl);
-        curl_close($hCurl);
-
-        throw new RuntimeException($curlError);
-      }
-
-      $certInfo = curl_getinfo($hCurl, CURLINFO_CERTINFO);
-      curl_close($hCurl);
-
-      if ($certInfo === false || $certInfo === []) {
-        throw new RuntimeException(
-          sprintf(
-            'Failed to retrieve the certificate for domain "%s"',
-            $domain
-          )
-        );
-      }
+      $chain = $this->certificateService->get($domain);
+      $cert0 = $chain->at(0);
 
       $output->writeln(
         sprintf(
           'Certificate chain size: <options=bold>%d</>',
-          count($certInfo)
+          count($chain)
         ),
         OutputInterface::VERBOSITY_VERBOSE
       );
 
-      // build the certificate chain to be parsed
-      $certChain = array_reduce(
-        array_reverse(
-          array_map(
-            static function (array $certificate): string {
-              return $certificate['Cert'];
-            },
-            $certInfo
-          )
-        ),
-        static function (Certificate|null $issuer, string $certificate): Certificate {
-          if ($issuer === null) {
-            return new Certificate($certificate);
-          }
-
-          return new Certificate($certificate, $issuer);
-        },
-        null
-      );
-
-      $parsedCertificate = $this->certParser->parse($certChain);
-      $listOfSubjects = [
-        $parsedCertificate->getSubject(),
-        ...$parsedCertificate->getSubjectAlternativeNames()
-      ];
-      if ($this->subjectMatch($domain, $listOfSubjects) === false) {
+      if (
+        $domain !== $cert0->subjectCommonName ||
+        $this->subjectMatch($domain, $cert0->subjectAlternativeNames) === false
+      ) {
         $errors[] = sprintf(
           'Domain "%s" does not match the certificate subject (%s) or any of the alternative names (%s)',
           $domain,
-          $parsedCertificate->getSubject(),
-          implode(', ', $parsedCertificate->getSubjectAlternativeNames())
+          $cert0->subjectCommonName,
+          implode(', ', $cert0->subjectAlternativeNames)
         );
 
         if ($failFast === true) {
+          $this->printWarnings($warnings, $output);
           $this->printErrors($errors, $output);
 
           return Command::FAILURE;
@@ -271,12 +221,12 @@ final class CheckCertificateCommand extends Command {
         $output->writeln(
           sprintf(
             'Certificate expiration date: <options=bold>%s</>',
-            $parsedCertificate->getValidTo()->format(DateTimeInterface::ATOM),
+            $cert0->validTo->format(DateTimeInterface::ATOM),
           ),
           OutputInterface::VERBOSITY_VERBOSE
         );
 
-        $interval = $now->diff($parsedCertificate->getValidTo());
+        $interval = $now->diff($cert0->validTo);
         if ($interval->days <= 0) {
           $errors[] = sprintf(
             'Certificate for domain "%s" expired %s ago',
@@ -285,6 +235,7 @@ final class CheckCertificateCommand extends Command {
           );
 
           if ($failFast === true) {
+            $this->printWarnings($warnings, $output);
             $this->printErrors($errors, $output);
 
             return Command::FAILURE;
@@ -300,6 +251,7 @@ final class CheckCertificateCommand extends Command {
           );
 
           if ($failFast === true) {
+            $this->printWarnings($warnings, $output);
             $this->printErrors($errors, $output);
 
             return Command::FAILURE;
@@ -315,197 +267,180 @@ final class CheckCertificateCommand extends Command {
         );
       }
 
+
       if ($checks['fingerprint'] === true) {
-        $certFingerprint = openssl_x509_fingerprint($certInfo[0]['Cert'], 'sha-256');
-        if ($certFingerprint === false) {
-          $errors[] = 'Failed to calculate the Certificate\'s Fingerprint';
-
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
-
-            return Command::FAILURE;
-          }
+        if (count($fingerprints) > count($chain)) {
+          $warnings[] = sprintf(
+            'Fingerprint list is %d items long, but the chain is only %d items long',
+            count($fingerprints),
+            count($chain)
+          );
         }
 
-        $output->writeln(
-          sprintf(
-            'Certificate Fingerprint: <options=bold>%s</>',
-            $certFingerprint
-          ),
-          OutputInterface::VERBOSITY_VERBOSE
-        );
+        foreach ($chain as $index => $cert) {
+          if (isset($fingerprints[$index]) === false) {
+            // skip if a fingerprint was not given
+            continue;
+          }
 
-        if ($fingerprint !== $certFingerprint) {
-          $errors[] = sprintf(
-            'Certificate fingerprint for domain "%s" does not match the expected "%s", found: "%s"',
-            $domain,
-            $fingerprint,
-            $certFingerprint
+          $output->writeln(
+            sprintf(
+              'Certificate Fingerprint: <options=bold>%s</>',
+              $cert->sha256Fingerprint
+            ),
+            OutputInterface::VERBOSITY_VERBOSE
           );
 
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
+          if ($cert->sha256Fingerprint !== $fingerprints[$index]) {
+            $errors[] = sprintf(
+              'Certificate #%d Fingerprint does not match the expected "%s", found: "%s"',
+              $index,
+              $fingerprints[$index],
+              $cert->sha256Fingerprint
+            );
 
-            return Command::FAILURE;
+            if ($failFast === true) {
+              $this->printWarnings($warnings, $output);
+              $this->printErrors($errors, $output);
+
+              return Command::FAILURE;
+            }
           }
         }
       }
 
       if ($checks['serialNumber'] === true) {
-        if ($parsedCertificate->getSerialNumber() === null) {
-          $errors[] = 'Failed to retrieve the Certificate\'s Serial Number';
-
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
-
-            return Command::FAILURE;
-          }
+        if (count($serialNumbers) > count($chain)) {
+          $warnings[] = sprintf(
+            'Serial Number list is %d items long, but the chain is only %d items long',
+            count($serialNumbers),
+            count($chain)
+          );
         }
 
-        $output->writeln(
-          sprintf(
-            'Certificate Serial Number: <options=bold>%s</>',
-            $parsedCertificate->getSerialNumber()
-          ),
-          OutputInterface::VERBOSITY_VERBOSE
-        );
+        foreach ($chain as $index => $cert) {
+          if (isset($serialNumbers[$index]) === false) {
+            // skip if a serial number was not given
+            continue;
+          }
 
-        if ($parsedCertificate->getSerialNumber() !== $serialNumber) {
-          $errors[] = sprintf(
-            'Certificate Serial Number for domain "%s" does not match the expected "%s", found: "%s"',
-            $domain,
-            $serialNumber,
-            $parsedCertificate->getSerialNumber()
+          if ($cert->serialNumber === null) {
+            $errors[] = "Failed to retrieve Certificate\'s Serial Number for certificate #{$index} in chain";
+
+            if ($failFast === true) {
+              $this->printWarnings($warnings, $output);
+              $this->printErrors($errors, $output);
+
+              return Command::FAILURE;
+            }
+          }
+
+          $output->writeln(
+            sprintf(
+              'Certificate Serial Number: <options=bold>%s</>',
+              $cert->serialNumber
+            ),
+            OutputInterface::VERBOSITY_VERBOSE
           );
 
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
+          if ($cert->serialNumber !== $serialNumbers[$index]) {
+            $errors[] = sprintf(
+              'Certificate #%d Serial Number does not match the expected "%s", found: "%s"',
+              $index,
+              $serialNumbers[$index],
+              $cert->serialNumber
+            );
 
-            return Command::FAILURE;
+            if ($failFast === true) {
+              $this->printWarnings($warnings, $output);
+              $this->printErrors($errors, $output);
+
+              return Command::FAILURE;
+            }
           }
         }
       }
 
       if ($checks['issuerName'] === true) {
-        if ($parsedCertificate->getIssuer() === null) {
-          $errors[] = 'Failed to retrieve the Certificate\'s Issuer Name';
-
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
-
-            return Command::FAILURE;
-          }
+        if (count($issuerNames) > count($chain)) {
+          $warnings[] = sprintf(
+            'Issuer Name list is %d items long, but the chain is only %d items long',
+            count($issuerNames),
+            count($chain)
+          );
         }
 
-        $output->writeln(
-          sprintf(
-            'Certificate Issuer Name: <options=bold>%s</>',
-            $parsedCertificate->getIssuer()
-          ),
-          OutputInterface::VERBOSITY_VERBOSE
-        );
+        foreach ($chain as $index => $cert) {
+          if (isset($issuerNames[$index]) === false) {
+            // skip if a issuer name was not given
+            continue;
+          }
 
-        if ($parsedCertificate->getIssuer() !== $issuerName) {
-          $errors[] = sprintf(
-            'Certificate Issuer Name for domain "%s" does not match the expected "%s", found: "%s"',
-            $domain,
-            $issuerName,
-            $parsedCertificate->getIssuer()
+          if ($cert->issuerOrganization === null && $cert->issuerCommonName === null) {
+            $errors[] = "Failed to retrieve the Certificate\'s Issuer Name for certificate #{$index} in chain";
+
+            if ($failFast === true) {
+              $this->printWarnings($warnings, $output);
+              $this->printErrors($errors, $output);
+
+              return Command::FAILURE;
+            }
+          }
+
+          $output->writeln(
+            sprintf(
+              'Certificate Issuer Name: <options=bold>%s</>',
+              $cert->issuerOrganization ?? $cert->issuerCommonName
+            ),
+            OutputInterface::VERBOSITY_VERBOSE
           );
 
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
+          if (
+            $cert->issuerOrganization !== $issuerNames[$index] &&
+            $cert->issuerCommonName !== $issuerNames[$index]
+          ) {
+            $errors[] = sprintf(
+              'Certificate #%d Issuer Name does not match the expected "%s", found: "%s"',
+              $index,
+              $issuerNames[$index],
+              $cert->issuerOrganization ?? $cert->issuerCommonName
+            );
 
-            return Command::FAILURE;
+            if ($failFast === true) {
+              $this->printWarnings($warnings, $output);
+              $this->printErrors($errors, $output);
+
+              return Command::FAILURE;
+            }
           }
         }
       }
 
       if ($checks['ocspRevoked'] === true) {
-        $certificate = $this->certLoader->fromString($certInfo[0]['Cert']);
-        $issuerCertificate = $this->certLoader->fromString($certInfo[1]['Cert']);
-        $ocspResponderUrl = $this->certInfo->extractOcspResponderUrl($certificate);
+        $status = $this->certificateService->status($chain);
 
-        $requestInfo = $this->certInfo->extractRequestInfo($certificate, $issuerCertificate);
-        $requestBody = $this->ocsp->buildOcspRequestBodySingle($requestInfo);
-
-        $hCurl = curl_init();
-        curl_setopt($hCurl, CURLOPT_URL, $ocspResponderUrl);
-        curl_setopt($hCurl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($hCurl, CURLOPT_POST, true);
-        curl_setopt($hCurl, CURLOPT_HTTPHEADER, ['Content-Type: ' . Ocsp::OCSP_REQUEST_MEDIATYPE]);
-        curl_setopt($hCurl, CURLOPT_SAFE_UPLOAD, true);
-        curl_setopt($hCurl, CURLOPT_POSTFIELDS, $requestBody);
-        $result = curl_exec($hCurl);
-        if (curl_errno($hCurl) > 0) {
-          $curlError = curl_error($hCurl);
-          curl_close($hCurl);
-
-          throw new RuntimeException($curlError);
-        }
-
-
-        curl_close($hCurl);
-
-        $info = curl_getinfo($hCurl);
-        if ($info['http_code'] !== 200) {
-            throw new \RuntimeException("Whoops, here we'd expect a 200 HTTP code");
-        }
-        if ($info['content_type'] !== Ocsp::OCSP_RESPONSE_MEDIATYPE) {
-            throw new \RuntimeException("Whoops, the Content-Type header of the response seems wrong!");
-        }
-
-        // Decode the raw response from the OCSP Responder
-        $response = $this->ocsp->decodeOcspResponseSingle($result);
-
-        if ($response->isRevoked() === null) {
-          $errors[] = sprintf(
-            'Certificate for domain "%s" OCSP revocation state is unknown',
-            $domain
-          );
-
-          if ($failFast === true) {
-            $this->printErrors($errors, $output);
-
-            return Command::FAILURE;
-          }
-        }
-
-        if ($response->isRevoked() === true) {
-          $reason = match ($response->getRevocationReason()) {
-            Response::REVOCATIONREASON_UNSPECIFIED => 'unspecified',
-            Response::REVOCATIONREASON_KEYCOMPROMISE => 'key compromise',
-            Response::REVOCATIONREASON_CACOMPROMISE => 'CA Compromise',
-            Response::REVOCATIONREASON_AFFILIATIONCHANGED => 'affiliation changed',
-            Response::REVOCATIONREASON_SUPERSEDED => 'superseded',
-            Response::REVOCATIONREASON_CESSATIONOFOPERATION => 'cessation of operation',
-            Response::REVOCATIONREASON_CERTIFICATEHOLD => 'certificate hold',
-            Response::REVOCATIONREASON_REMOVEFROMCRL => 'remove from CRL',
-            Response::REVOCATIONREASON_PRIVILEGEWITHDRAWN => 'privilege withdrawn',
-            Response::REVOCATIONREASON_AACOMPROMISE => 'AA compromise',
-            default => 'unknown'
-          };
-
+        if ($status->isRevoked()) {
           $errors[] = sprintf(
             'Certificate for domain "%s" was revoked on %s (reason: %s)',
             $domain,
-            $response->getRevokedOn(),
-            $reason
+            $status->revokedOn,
+            $status->revocationReason
           );
 
           if ($failFast === true) {
+            $this->printWarnings($warnings, $output);
             $this->printErrors($errors, $output);
 
             return Command::FAILURE;
           }
         }
 
-        $interval = $now->diff($response->getThisUpdate());
+        $interval = $now->diff($status->lastUpdate);
         $output->writeln(
           sprintf(
             'OCSP Revocation list last update: <options=bold>%s</> (%s)',
             $this->humanReadableInterval($interval),
-            $response->getThisUpdate()->format(DateTimeInterface::ATOM)
+            $status->lastUpdate->format(DateTimeInterface::ATOM)
           ),
           OutputInterface::VERBOSITY_VERBOSE
         );
@@ -516,6 +451,7 @@ final class CheckCertificateCommand extends Command {
         $errors[] = $exception->getTraceAsString();
       }
 
+      $this->printWarnings($warnings, $output);
       $this->printErrors($errors, $output);
 
       return Command::FAILURE;
@@ -526,6 +462,7 @@ final class CheckCertificateCommand extends Command {
       OutputInterface::VERBOSITY_VERBOSE
     );
 
+    $this->printWarnings($warnings, $output);
     if (count($errors) > 0) {
       $this->printErrors($errors, $output);
 
@@ -536,18 +473,12 @@ final class CheckCertificateCommand extends Command {
   }
 
   public function __construct(
-    CertificateInfo $certInfo,
-    CertificateLoader $certLoader,
-    CertificateParser $certParser,
-    ClockInterface $clock,
-    Ocsp $ocsp
+    CertificateService $certificateService,
+    ClockInterface $clock
   ) {
     parent::__construct();
 
-    $this->certInfo = $certInfo;
-    $this->certLoader = $certLoader;
-    $this->certParser = $certParser;
+    $this->certificateService = $certificateService;
     $this->clock = $clock;
-    $this->ocsp = $ocsp;
   }
 }

@@ -7,23 +7,43 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 trait ErrorPrinterTrait {
   /**
-   * @param string[] $errors
+   * @param string[] $messages
    */
-  private function printErrors(array $errors, OutputInterface $output): void {
-    $errorCount = count($errors);
-    if ($errorCount === 0) {
+  private function printMessages(
+    string $listTemplate,
+    string $lineTemplate,
+    array $messages,
+    OutputInterface $output,
+    int $verbosityLevel
+  ): void {
+    $messageCount = count($messages);
+    if ($messageCount === 0) {
       return;
     }
 
-    if ($errorCount > 1) {
+    if ($messageCount > 1) {
       $output->writeln(
         [
-          "Found {$errorCount} errors:",
+          sprintf($listTemplate, $messageCount),
           ...array_map(
-            static function (string $error): string {
-              return " - {$error}";
+            static function (string $message): string {
+              return sprintf(
+                ' - %s',
+                // properly indent multi-line messages
+                trim(
+                  implode(
+                    PHP_EOL,
+                    array_map(
+                      static function (string $line): string {
+                        return str_repeat(' ', 3) . $line;
+                      },
+                      explode(PHP_EOL, $message)
+                    )
+                  )
+                )
+              );
             },
-            $errors
+            $messages
           )
         ],
         OutputInterface::VERBOSITY_VERBOSE
@@ -33,7 +53,33 @@ trait ErrorPrinterTrait {
     }
 
     $output->writeln(
-      'Error: ' . array_pop($errors),
+      sprintf($lineTemplate, array_pop($messages)),
+      OutputInterface::VERBOSITY_VERBOSE
+    );
+  }
+
+  /**
+   * @param string[] $warnings
+   */
+  private function printWarnings(array $warnings, OutputInterface $output): void {
+    $this->printMessages(
+      'Found <options=bold>%d</> warnings:',
+      'Warning: %s',
+      $warnings,
+      $output,
+      OutputInterface::VERBOSITY_VERBOSE
+    );
+  }
+
+  /**
+   * @param string[] $errors
+   */
+  private function printErrors(array $errors, OutputInterface $output): void {
+    $this->printMessages(
+      'Found <options=bold>%d</> errors:',
+      'Error: %s',
+      $errors,
+      $output,
       OutputInterface::VERBOSITY_VERBOSE
     );
   }
