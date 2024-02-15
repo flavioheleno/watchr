@@ -99,7 +99,7 @@ final class CheckHttpResponseCommand extends Command {
     $authPath = (string)$input->getOption('auth-path');
     if ($authPath !== '' && is_readable($authPath)) {}
 
-    $statusCodes = (array)$input->getOption('status-code');
+    $statusCodes = array_map('intval', (array)$input->getOption('status-code'));
 
     $matchKeywords = (array)$input->getOption('match-keyword');
     $notMatchKeywords = (array)$input->getOption('not-match-keyword');
