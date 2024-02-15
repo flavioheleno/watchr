@@ -16,10 +16,12 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Watchr\Console\Services\DomainService;
 use Watchr\Console\Traits\DateUtilsTrait;
+use Watchr\Console\Traits\ErrorPrinterTrait;
 
 #[AsCommand('view:domain', 'View domain name details')]
 final class ViewDomainCommand extends Command {
   use DateUtilsTrait;
+  use ErrorPrinterTrait;
 
   private ClockInterface $clock;
   private DomainService $domainService;
@@ -108,10 +110,12 @@ final class ViewDomainCommand extends Command {
         return Command::FAILURE;
       }
 
-      $output->writeln($exception->getMessage());
+      $errors = [$exception->getMessage()];
       if ($output->isDebug() === true) {
-        $output->writeln($exception->getTraceAsString());
+        $errors[] = $exception->getTraceAsString();
       }
+
+      $this->printErrors($errors, $output);
 
       return Command::FAILURE;
     }

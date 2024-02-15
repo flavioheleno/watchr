@@ -270,6 +270,10 @@ final class CheckHttpResponseCommand extends Command {
       }
     } catch (Exception $exception) {
       $errors[] = $exception->getMessage();
+      if ($output->isDebug() === true) {
+        $errors[] = $exception->getTraceAsString();
+      }
+
       $this->printErrors($errors, $output);
 
       return Command::FAILURE;

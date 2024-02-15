@@ -16,10 +16,12 @@ use Watchr\Console\Contracts\HTTP\HttpRequestMethodEnum;
 use Watchr\Console\DataObjects\HTTP\HttpConfiguration;
 use Watchr\Console\Services\HttpService;
 use Watchr\Console\Traits\DateUtilsTrait;
+use Watchr\Console\Traits\ErrorPrinterTrait;
 
 #[AsCommand('view:http-resp', 'View HTTP Response details')]
 final class ViewHttpResponseCommand extends Command {
   use DateUtilsTrait;
+  use ErrorPrinterTrait;
 
   private HttpService $httpService;
 
@@ -199,10 +201,12 @@ final class ViewHttpResponseCommand extends Command {
         return Command::FAILURE;
       }
 
-      $output->writeln($exception->getMessage());
+      $errors = [$exception->getMessage()];
       if ($output->isDebug() === true) {
-        $output->writeln($exception->getTraceAsString());
+        $errors[] = $exception->getTraceAsString();
       }
+
+      $this->printErrors($errors, $output);
 
       return Command::FAILURE;
     }
