@@ -28,6 +28,7 @@ use Watchr\Console\Commands\Check\CheckAllCommand;
 use Watchr\Console\Commands\Check\CheckCertificateCommand;
 use Watchr\Console\Commands\Check\CheckDomainCommand;
 use Watchr\Console\Commands\Check\CheckHttpResponseCommand;
+use Watchr\Console\Commands\View\ViewCertificateCommand;
 use Watchr\Console\Commands\View\ViewDomainCommand;
 use Watchr\Console\Commands\View\ViewHttpResponseCommand;
 
@@ -64,6 +65,7 @@ $app->setCommandLoader(
       CheckCertificateCommand::getDefaultName() => CheckCertificateCommand::class,
       CheckDomainCommand::getDefaultName() => CheckDomainCommand::class,
       CheckHttpResponseCommand::getDefaultName() => CheckHttpResponseCommand::class,
+      ViewCertificateCommand::getDefaultName() => ViewCertificateCommand::class,
       ViewDomainCommand::getDefaultName() => ViewDomainCommand::class,
       ViewHttpResponseCommand::getDefaultName() => ViewHttpResponseCommand::class
     ]
