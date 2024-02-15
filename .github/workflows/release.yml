@@ -23,7 +23,7 @@ jobs:
           tools: phive, composer:v2
 
       - name: Install dependencies
-        uses: ramsey/composer-install@83af392bf5f031813d25e6fe4cd626cdba9a2df6
+        uses: ramsey/composer-install@83af392bf5f031813d25e6fe4cd626cdba9a2df6 # v2.2.0
 
       - name: Build PHAR
         run: |
@@ -59,7 +59,7 @@ jobs:
 
       - name: Create release
         id: create_release
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
         with:
           draft: true
           body: TODO
