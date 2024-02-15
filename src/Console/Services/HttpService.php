@@ -4,6 +4,7 @@ declare(strict_types = 1);
 namespace Watchr\Console\Services;
 
 use CurlHandle;
+use InvalidArgumentException;
 use RuntimeException;
 use Watchr\Console\Contracts\HTTP\HttpRequestMethodEnum;
 use Watchr\Console\DataObjects\HTTP\Authentication\BasicAuthentication;
@@ -57,6 +58,10 @@ final class HttpService {
     HttpRequestMethodEnum $requestMethod = HttpRequestMethodEnum::GET,
     HttpConfiguration $configuration = null
   ): HttpResponse {
+    if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+      throw new InvalidArgumentException('Invalid url argument');
+    }
+
     $opts = [
       CURLOPT_NOBODY => $requestMethod === HttpRequestMethodEnum::HEAD,
       CURLOPT_RETURNTRANSFER => false,

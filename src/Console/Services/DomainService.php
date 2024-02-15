@@ -5,6 +5,7 @@ namespace Watchr\Console\Services;
 
 use DateTimeImmutable;
 use Exception;
+use InvalidArgumentException;
 use Iodev\Whois\Whois;
 use Juanparati\RDAPLib\RDAPClient;
 use RuntimeException;
@@ -135,6 +136,10 @@ class DomainService {
   }
 
   public function lookup(string $domain): DomainInfo {
+    if (filter_var($domain, FILTER_VALIDATE_DOMAIN) === false) {
+      throw new InvalidArgumentException('Invalid domain argument');
+    }
+
     $domainInfo = $this->rdapLookup($domain);
     if ($domainInfo === null) {
       $domainInfo = $this->whoisLookup($domain);
