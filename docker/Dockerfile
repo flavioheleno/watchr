@@ -15,9 +15,9 @@ RUN set -eux ; \
     --location \
     --retry 3 \
     --output /usr/local/bin/install-php-extensions \
-    --url https://github.com/mlocati/docker-php-extension-installer/releases/download/2.1.51/install-php-extensions \
+    --url https://github.com/mlocati/docker-php-extension-installer/releases/download/2.7.13/install-php-extensions \
   ; \
-  echo 7c3baef4838424267224a132fc5784d539f239b52076b2800a4a220734d9be8ce6f64c13228bc82be3eb7e87e04c468b1e6419e55ffc58e7589f06e058116f1c /usr/local/bin/install-php-extensions | sha512sum --strict --check ; \
+  echo cbf3df321e90305cd04cc991c7bcd29c0542fe80221c36da2f88d6457be352dce72ca2683a584de1a6cd59dd769dab465880b57e6330eb69ecd200878ee572d5 /usr/local/bin/install-php-extensions | sha512sum --strict --check ; \
   chmod +x /usr/local/bin/install-php-extensions ; \
   install-php-extensions curl filter hash json openssl pcntl
 
