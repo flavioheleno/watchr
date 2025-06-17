@@ -56,7 +56,7 @@ final class HttpService {
   public function request(
     string $url,
     HttpRequestMethodEnum $requestMethod = HttpRequestMethodEnum::GET,
-    HttpConfiguration $configuration = null
+    HttpConfiguration|null $configuration = null
   ): HttpResponse {
     if (filter_var($url, FILTER_VALIDATE_URL) === false) {
       throw new InvalidArgumentException('Invalid url argument');
