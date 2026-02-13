@@ -30,9 +30,12 @@ func NewClient(timeout time.Duration, nameserver string) *Client {
 }
 
 func getSystemDNS() string {
+	// Attempt to read system DNS configuration from /etc/resolv.conf (Linux/Unix)
+	// Note: This file does not exist on Windows. On non-Linux systems or when
+	// /etc/resolv.conf is unavailable, this falls back to a public DNS server.
 	config, err := mdns.ClientConfigFromFile("/etc/resolv.conf")
 	if err != nil || len(config.Servers) == 0 {
-		slog.Debug("failed to read system DNS, using default", "error", err)
+		slog.Warn("failed to read system DNS configuration, using fallback public DNS server (8.8.8.8). Use --server flag to specify a different DNS server.", "error", err)
 		return "8.8.8.8"
 	}
 	return config.Servers[0]
