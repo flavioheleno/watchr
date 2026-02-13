@@ -2,6 +2,8 @@ package tls
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -94,9 +96,25 @@ func (c *Client) parseCertificate(cert *x509.Certificate) Certificate {
 		IsCA:               cert.IsCA,
 	}
 
+	// Extract public key size for different key types
 	switch pub := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		parsed.PublicKeySize = pub.N.BitLen()
+	case *ecdsa.PublicKey:
+		parsed.PublicKeySize = pub.Curve.Params().BitSize
+	case ed25519.PublicKey:
+		parsed.PublicKeySize = 256 // Ed25519 keys are always 256 bits
+	}
+
+	// Check certificate validity
+	now := time.Now()
+	if now.Before(cert.NotBefore) {
+		slog.Warn("certificate is not yet valid", "subject", cert.Subject.CommonName, "notBefore", cert.NotBefore)
+	} else if now.After(cert.NotAfter) {
+		slog.Warn("certificate has expired", "subject", cert.Subject.CommonName, "notAfter", cert.NotAfter)
+	} else if now.Add(30 * 24 * time.Hour).After(cert.NotAfter) {
+		daysUntilExpiry := int(time.Until(cert.NotAfter).Hours() / 24)
+		slog.Warn("certificate expiring soon", "subject", cert.Subject.CommonName, "notAfter", cert.NotAfter, "daysRemaining", daysUntilExpiry)
 	}
 
 	return parsed
