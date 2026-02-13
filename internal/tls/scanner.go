@@ -276,7 +276,9 @@ func (s *Scanner) tryHandshake(ctx context.Context, host, port string, cfg *tls.
 
 func (s *Scanner) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if s.timeout <= 0 {
-		return ctx, func() {}
+		// Return a proper cancel function even when no timeout is set
+		// to ensure context resources are properly cleaned up
+		return context.WithCancel(ctx)
 	}
 	return context.WithTimeout(ctx, s.timeout)
 }
