@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -53,6 +54,7 @@ func (c *Client) queryURL(ctx context.Context, url string) (*Response, error) {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
+		// Read body before it gets closed by defer
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("RDAP query failed with status %d: %s", resp.StatusCode, string(body))
 	}
@@ -69,8 +71,10 @@ func (c *Client) QueryDomain(ctx context.Context, domain string) (*Response, err
 	domain = strings.ToLower(strings.TrimSpace(domain))
 
 	if c.baseURL != "" {
-		url := fmt.Sprintf("%s/domain/%s", strings.TrimSuffix(c.baseURL, "/"), domain)
-		return c.queryURL(ctx, url)
+		// Properly escape domain to prevent URL manipulation
+		escapedDomain := url.PathEscape(domain)
+		queryURL := fmt.Sprintf("%s/domain/%s", strings.TrimSuffix(c.baseURL, "/"), escapedDomain)
+		return c.queryURL(ctx, queryURL)
 	}
 
 	slog.Debug("querying domain", "domain", domain)
