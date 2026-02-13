@@ -20,7 +20,7 @@ A modern CLI tool for retrieving domain registration details, TLS certificate in
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/watchr.git
+git clone https://github.com/flavioheleno/watchr.git
 cd watchr
 make build
 ```
@@ -30,7 +30,7 @@ The binary will be available in `./bin/watchr`
 ### Using Go Install
 
 ```bash
-go install github.com/yourusername/watchr/cmd/watchr@latest
+go install github.com/flavioheleno/watchr/cmd/watchr@latest
 ```
 
 ## Usage
