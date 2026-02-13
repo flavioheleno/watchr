@@ -41,7 +41,8 @@ func (c *Client) Fetch(ctx context.Context, host, port string) (*Response, error
 	}()
 
 	tlsConfig := &tls.Config{
-		ServerName: host,
+		ServerName:         host,
+		InsecureSkipVerify: true,
 	}
 
 	tlsConn := tls.Client(conn, tlsConfig)

@@ -29,6 +29,11 @@ func NewClient(timeout time.Duration, followRedirects bool, showTimings bool) *C
 
 	httpClient := &http.Client{
 		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
 	}
 
 	if !followRedirects {

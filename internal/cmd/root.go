@@ -7,12 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	format  string
-	timeout int
-	verbose bool
-)
-
 var rootCmd = &cobra.Command{
 	Use:   "watchr",
 	Short: "watchr - retrieve domain, TLS, and HTTP information",
@@ -21,6 +15,7 @@ var rootCmd = &cobra.Command{
   - TLS certificate chain information
   - HTTP response details`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		verbose, _ := cmd.Flags().GetBool("verbose")
 		level := slog.LevelInfo
 		if verbose {
 			level = slog.LevelDebug
@@ -37,17 +32,9 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "text", "Output format (text|json)")
-	rootCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 10, "Request timeout in seconds")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
-}
-
-func GetFormat() string {
-	return format
-}
-
-func GetTimeout() int {
-	return timeout
+	rootCmd.PersistentFlags().StringP("format", "f", "text", "Output format (text|json)")
+	rootCmd.PersistentFlags().IntP("timeout", "t", 10, "Request timeout in seconds")
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose logging")
 }
 
 func AddCommand(cmd *cobra.Command) {

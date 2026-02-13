@@ -11,11 +11,6 @@ import (
 	"watchr/internal/output"
 )
 
-var (
-	dnsRecordType string
-	dnsServer     string
-)
-
 func NewDNSCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dns <domain>",
@@ -28,25 +23,28 @@ Supports common record types including A, AAAA, MX, NS, CNAME, TXT, SOA, SRV, PT
 		RunE: runDNS,
 	}
 
-	cmd.Flags().StringVarP(&dnsRecordType, "type", "T", "A", "Record type (A, AAAA, MX, NS, CNAME, TXT, SOA, SRV, PTR, CAA)")
-	cmd.Flags().StringVarP(&dnsServer, "server", "s", "", "DNS server to query (default: system resolver, port defaults to 53)")
+	cmd.Flags().StringP("type", "T", "A", "Record type (A, AAAA, MX, NS, CNAME, TXT, SOA, SRV, PTR, CAA)")
+	cmd.Flags().StringP("server", "s", "", "DNS server to query (default: system resolver, port defaults to 53)")
 
 	return cmd
 }
 
 func runDNS(cmd *cobra.Command, args []string) error {
 	domain := args[0]
-	timeout := time.Duration(GetTimeout()) * time.Second
-	format := GetFormat()
+	timeoutSecs, _ := cmd.Flags().GetInt("timeout")
+	timeout := time.Duration(timeoutSecs) * time.Second
+	format, _ := cmd.Flags().GetString("format")
+	recordType, _ := cmd.Flags().GetString("type")
+	server, _ := cmd.Flags().GetString("server")
 
 	ctx := context.Background()
 
-	dnsClient := dnsinfo.NewClient(timeout, dnsServer)
+	dnsClient := dnsinfo.NewClient(timeout, server)
 	formatter := output.NewFormatter(format, cmd.OutOrStdout())
 
-	slog.Info("querying DNS", "domain", domain, "type", dnsRecordType, "server", dnsServer, "timeout", timeout)
+	slog.Info("querying DNS", "domain", domain, "type", recordType, "server", server, "timeout", timeout)
 
-	resp, err := dnsClient.Query(ctx, domain, dnsRecordType)
+	resp, err := dnsClient.Query(ctx, domain, recordType)
 	if err != nil {
 		return err
 	}

@@ -11,11 +11,6 @@ import (
 	"watchr/internal/output"
 )
 
-var (
-	followRedirects bool
-	showTimings     bool
-)
-
 func NewHTTPCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "http <url>",
@@ -32,16 +27,19 @@ TCP connection, TLS handshake, server processing, and content transfer times.`,
 		RunE: runHTTP,
 	}
 
-	cmd.Flags().BoolVarP(&followRedirects, "follow-redirects", "L", false, "Follow HTTP redirects")
-	cmd.Flags().BoolVar(&showTimings, "timings", false, "Show detailed timing breakdown")
+	cmd.Flags().BoolP("follow-redirects", "L", false, "Follow HTTP redirects")
+	cmd.Flags().Bool("timings", false, "Show detailed timing breakdown")
 
 	return cmd
 }
 
 func runHTTP(cmd *cobra.Command, args []string) error {
 	url := args[0]
-	timeout := time.Duration(GetTimeout()) * time.Second
-	format := GetFormat()
+	timeoutSecs, _ := cmd.Flags().GetInt("timeout")
+	timeout := time.Duration(timeoutSecs) * time.Second
+	format, _ := cmd.Flags().GetString("format")
+	followRedirects, _ := cmd.Flags().GetBool("follow-redirects")
+	showTimings, _ := cmd.Flags().GetBool("timings")
 
 	ctx := context.Background()
 

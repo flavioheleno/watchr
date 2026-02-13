@@ -172,7 +172,8 @@ func TestDialContext(t *testing.T) {
 	}()
 
 	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName: "example.com",
+		ServerName:         "example.com",
+		InsecureSkipVerify: true,
 	})
 
 	err = tlsConn.HandshakeContext(ctx)

@@ -30,8 +30,9 @@ Access Protocol). If RDAP is unavailable or fails, it falls back to WHOIS.`,
 
 func runDomain(cmd *cobra.Command, args []string) error {
 	domain := args[0]
-	timeout := time.Duration(GetTimeout()) * time.Second
-	format := GetFormat()
+	timeoutSecs, _ := cmd.Flags().GetInt("timeout")
+	timeout := time.Duration(timeoutSecs) * time.Second
+	format, _ := cmd.Flags().GetString("format")
 
 	ctx := context.Background()
 
@@ -50,7 +51,7 @@ func runDomain(cmd *cobra.Command, args []string) error {
 
 	whoisResp, whoisErr := whoisClient.Query(ctx, domain)
 	if whoisErr != nil {
-		return fmt.Errorf("both RDAP and WHOIS queries failed - RDAP: %v, WHOIS: %v", rdapErr, whoisErr)
+		return fmt.Errorf("both RDAP and WHOIS queries failed: %w", fmt.Errorf("RDAP: %w; WHOIS: %w", rdapErr, whoisErr))
 	}
 
 	return formatter.OutputWHOIS(whoisResp)

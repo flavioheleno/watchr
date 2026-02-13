@@ -11,13 +11,6 @@ import (
 	tlsinfo "watchr/internal/tls"
 )
 
-var (
-	tlsPort          string
-	tlsScanProtocols bool
-	tlsScanCiphers   bool
-	tlsFullScan      bool
-)
-
 func NewTLSCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tls <host>",
@@ -35,31 +28,36 @@ versions, cipher suites, and vulnerability detection.`,
 		RunE: runTLS,
 	}
 
-	cmd.Flags().StringVarP(&tlsPort, "port", "p", "443", "Port to connect to")
-	cmd.Flags().BoolVar(&tlsScanProtocols, "scan-protocols", false, "Scan for supported TLS protocol versions")
-	cmd.Flags().BoolVar(&tlsScanCiphers, "scan-ciphers", false, "Enumerate supported cipher suites (implies --scan-protocols)")
-	cmd.Flags().BoolVar(&tlsFullScan, "full-scan", false, "Perform full security scan (protocols, ciphers, vulnerabilities)")
+	cmd.Flags().StringP("port", "p", "443", "Port to connect to")
+	cmd.Flags().Bool("scan-protocols", false, "Scan for supported TLS protocol versions")
+	cmd.Flags().Bool("scan-ciphers", false, "Enumerate supported cipher suites (implies --scan-protocols)")
+	cmd.Flags().Bool("full-scan", false, "Perform full security scan (protocols, ciphers, vulnerabilities)")
 
 	return cmd
 }
 
 func runTLS(cmd *cobra.Command, args []string) error {
 	host := args[0]
-	timeout := time.Duration(GetTimeout()) * time.Second
-	format := GetFormat()
+	timeoutSecs, _ := cmd.Flags().GetInt("timeout")
+	timeout := time.Duration(timeoutSecs) * time.Second
+	format, _ := cmd.Flags().GetString("format")
+	port, _ := cmd.Flags().GetString("port")
+	fullScan, _ := cmd.Flags().GetBool("full-scan")
+	scanCiphers, _ := cmd.Flags().GetBool("scan-ciphers")
+	scanProtocols, _ := cmd.Flags().GetBool("scan-protocols")
 
 	ctx := context.Background()
 	formatter := output.NewFormatter(format, cmd.OutOrStdout())
 
-	if tlsFullScan || tlsScanCiphers || tlsScanProtocols {
-		return runTLSScan(ctx, host, tlsPort, timeout, formatter)
+	if fullScan || scanCiphers || scanProtocols {
+		return runTLSScan(ctx, host, port, timeout, formatter, fullScan, scanCiphers)
 	}
 
 	tlsClient := tlsinfo.NewClient(timeout)
 
-	slog.Info("retrieving TLS certificate", "host", host, "port", tlsPort, "timeout", timeout)
+	slog.Info("retrieving TLS certificate", "host", host, "port", port, "timeout", timeout)
 
-	resp, err := tlsClient.Fetch(ctx, host, tlsPort)
+	resp, err := tlsClient.Fetch(ctx, host, port)
 	if err != nil {
 		return err
 	}
@@ -67,10 +65,10 @@ func runTLS(cmd *cobra.Command, args []string) error {
 	return formatter.OutputTLS(resp)
 }
 
-func runTLSScan(ctx context.Context, host, port string, timeout time.Duration, formatter *output.Formatter) error {
+func runTLSScan(ctx context.Context, host, port string, timeout time.Duration, formatter *output.Formatter, fullScan, scanCiphers bool) error {
 	scanner := tlsinfo.NewScanner(timeout)
 
-	if tlsFullScan {
+	if fullScan {
 		slog.Info("performing full TLS scan", "host", host, "port", port, "timeout", timeout)
 		result, err := scanner.FullTest(ctx, host, port, true)
 		if err != nil {
@@ -79,7 +77,7 @@ func runTLSScan(ctx context.Context, host, port string, timeout time.Duration, f
 		return formatter.OutputTLSScan(result)
 	}
 
-	if tlsScanCiphers {
+	if scanCiphers {
 		slog.Info("scanning TLS cipher suites", "host", host, "port", port, "timeout", timeout)
 		result, err := scanner.FullTest(ctx, host, port, true)
 		if err != nil {
