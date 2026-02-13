@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptrace"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ type Client struct {
 	showTimings     bool
 	httpClient      *http.Client
 	redirectChain   []string
+	redirectMu      sync.Mutex
 }
 
 func NewClient(timeout time.Duration, followRedirects bool, showTimings bool) *Client {
@@ -42,7 +44,9 @@ func NewClient(timeout time.Duration, followRedirects bool, showTimings bool) *C
 		}
 	} else {
 		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			client.redirectMu.Lock()
 			client.redirectChain = append(client.redirectChain, req.URL.String())
+			client.redirectMu.Unlock()
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")
 			}
@@ -55,7 +59,9 @@ func NewClient(timeout time.Duration, followRedirects bool, showTimings bool) *C
 }
 
 func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
+	c.redirectMu.Lock()
 	c.redirectChain = make([]string, 0)
+	c.redirectMu.Unlock()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -138,6 +144,11 @@ func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
 		}
 	}
 
+	c.redirectMu.Lock()
+	redirectChainCopy := make([]string, len(c.redirectChain))
+	copy(redirectChainCopy, c.redirectChain)
+	c.redirectMu.Unlock()
+
 	response := &Response{
 		URL:              resp.Request.URL.String(),
 		StatusCode:       resp.StatusCode,
@@ -147,7 +158,7 @@ func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
 		TransferEncoding: resp.TransferEncoding,
 		Duration:         duration,
 		Timings:          timings,
-		RedirectChain:    c.redirectChain,
+		RedirectChain:    redirectChainCopy,
 	}
 
 	for key, values := range resp.Header {
