@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.output }}" ./cmd/watchr
+          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.output }}" ./cmd/watchr/main.go
 
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
