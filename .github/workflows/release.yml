@@ -31,10 +31,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@5ac7d09ee3f2b9fdf6130538ab3f26d65f7b272f # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
           cache: true
@@ -51,7 +51,7 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.output }}" ./cmd/watchr
 
       - name: Upload artifact
-        uses: actions/upload-artifact@d3f86a10d18bc4f88a3a1b31cf10c2a6d5671108 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ matrix.output }}
           path: dist/${{ matrix.output }}
@@ -64,13 +64,13 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@95815c38cf2165054e7b31b44a706424caee0f10 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: dist
           merge-multiple: true
 
       - name: Create release and upload assets
-        uses: softprops/action-gh-release@16c7c7c7c67e0404c5b5f06b997d6d91316953be # v2.4.1
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
