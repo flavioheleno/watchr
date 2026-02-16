@@ -50,6 +50,12 @@ jobs:
           mkdir -p dist
           go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.output }}" ./cmd/watchr/main.go
 
+      - name: Setup UPX
+        uses: crazy-max/ghaction-upx@db8cc9515a4a7ea1b312cb82fbeae6d716daf777 # v3.2.0
+
+      - name: Compress binary
+        run: upx --best --lzma "dist/${{ matrix.output }}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
