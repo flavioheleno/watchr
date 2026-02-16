@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Linux Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            goarm: ""
+            output: watchr-linux-amd64
+          - goarch: arm64
+            goarm: ""
+            output: watchr-linux-arm64
+          - goarch: arm
+            goarm: "7"
+            output: watchr-linux-arm32v7
+          - goarch: arm
+            goarm: "6"
+            output: watchr-linux-arm32v6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@5ac7d09ee3f2b9fdf6130538ab3f26d65f7b272f # v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.output }}" ./cmd/watchr
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@d3f86a10d18bc4f88a3a1b31cf10c2a6d5671108 # v5.0.0
+        with:
+          name: ${{ matrix.output }}
+          path: dist/${{ matrix.output }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@95815c38cf2165054e7b31b44a706424caee0f10 # v6.0.0
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@16c7c7c7c67e0404c5b5f06b997d6d91316953be # v2.4.1
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/watchr-linux-amd64
+            dist/watchr-linux-arm64
+            dist/watchr-linux-arm32v7
+            dist/watchr-linux-arm32v6
