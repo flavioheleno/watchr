@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"fmt"
 	"log/slog"
+	"math"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -15,8 +18,26 @@ func NewRootCommand() *cobra.Command {
   - Domain registration details (RDAP/WHOIS)
   - TLS certificate chain information
   - HTTP response details`,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			verbose, _ := cmd.Flags().GetBool("verbose")
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			format, err := cmd.Flags().GetString("format")
+			if err != nil {
+				return err
+			}
+			if format != "text" && format != "json" {
+				return fmt.Errorf("unsupported output format %q: use text or json", format)
+			}
+			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				return err
+			}
+			maxTimeout := int64(math.MaxInt64) / int64(time.Second)
+			if timeout <= 0 || int64(timeout) > maxTimeout {
+				return fmt.Errorf("timeout must be positive and no greater than %d seconds", maxTimeout)
+			}
+			verbose, err := cmd.Flags().GetBool("verbose")
+			if err != nil {
+				return err
+			}
 			level := slog.LevelInfo
 			if verbose {
 				level = slog.LevelDebug
@@ -25,6 +46,7 @@ func NewRootCommand() *cobra.Command {
 				Level: level,
 			}))
 			slog.SetDefault(logger)
+			return nil
 		},
 	}
 	rootCmd.PersistentFlags().StringP("format", "f", "text", "Output format (text|json)")

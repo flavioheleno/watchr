@@ -57,7 +57,7 @@ watchr dns example.com
 ### Global Flags
 
 - `-f, --format` - Output format: `text` or `json` (default: text)
-- `-t, --timeout` - Request timeout in seconds (default: 10)
+- `-t, --timeout` - Positive request timeout in seconds (default: 10)
 - `-v, --verbose` - Enable verbose logging
 
 ### Examples
