@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -34,7 +33,10 @@ func runDomain(cmd *cobra.Command, args []string) error {
 	timeout := time.Duration(timeoutSecs) * time.Second
 	format, _ := cmd.Flags().GetString("format")
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	rdapClient := rdap.NewClient(timeout)
 	whoisClient := whois.NewClient(timeout)
@@ -46,6 +48,9 @@ func runDomain(cmd *cobra.Command, args []string) error {
 	if rdapErr == nil {
 		return formatter.OutputRDAP(rdapResp)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	slog.Debug("RDAP query failed, falling back to WHOIS", "error", rdapErr)
 
@@ -55,8 +60,4 @@ func runDomain(cmd *cobra.Command, args []string) error {
 	}
 
 	return formatter.OutputWHOIS(whoisResp)
-}
-
-func init() {
-	AddCommand(NewDomainCommand())
 }

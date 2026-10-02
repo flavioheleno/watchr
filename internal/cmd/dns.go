@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
@@ -37,7 +36,10 @@ func runDNS(cmd *cobra.Command, args []string) error {
 	recordType, _ := cmd.Flags().GetString("type")
 	server, _ := cmd.Flags().GetString("server")
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	dnsClient := dnsinfo.NewClient(timeout, server)
 	formatter := output.NewFormatter(format, cmd.OutOrStdout())
@@ -50,8 +52,4 @@ func runDNS(cmd *cobra.Command, args []string) error {
 	}
 
 	return formatter.OutputDNS(resp)
-}
-
-func init() {
-	AddCommand(NewDNSCommand())
 }

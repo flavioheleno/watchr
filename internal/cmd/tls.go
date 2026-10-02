@@ -47,7 +47,10 @@ func runTLS(cmd *cobra.Command, args []string) error {
 	scanCiphers, _ := cmd.Flags().GetBool("scan-ciphers")
 	scanProtocols, _ := cmd.Flags().GetBool("scan-protocols")
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	formatter := output.NewFormatter(format, cmd.OutOrStdout())
 
 	if fullScan || scanCiphers || scanProtocols {
@@ -93,8 +96,4 @@ func runTLSScan(ctx context.Context, host, port string, timeout time.Duration, f
 		return err
 	}
 	return formatter.OutputTLSScan(result)
-}
-
-func init() {
-	AddCommand(NewTLSCommand())
 }

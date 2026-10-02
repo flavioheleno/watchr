@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
@@ -41,7 +40,10 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 	followRedirects, _ := cmd.Flags().GetBool("follow-redirects")
 	showTimings, _ := cmd.Flags().GetBool("timings")
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	httpClient := httpinfo.NewClient(timeout, followRedirects, showTimings)
 	formatter := output.NewFormatter(format, cmd.OutOrStdout())
@@ -54,8 +56,4 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 	}
 
 	return formatter.OutputHTTP(resp)
-}
-
-func init() {
-	AddCommand(NewHTTPCommand())
 }
