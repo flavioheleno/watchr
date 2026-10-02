@@ -70,40 +70,10 @@ func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
 
 	req.Header.Set("User-Agent", "watchr/1.0")
 
-	var timings *Timings
+	var timingData *requestTimings
 	if c.showTimings {
-		timings = &Timings{}
-
-		var dnsStart, connectStart, tlsStart time.Time
-
-		trace := &httptrace.ClientTrace{
-			DNSStart: func(_ httptrace.DNSStartInfo) {
-				dnsStart = time.Now()
-			},
-			DNSDone: func(_ httptrace.DNSDoneInfo) {
-				if !dnsStart.IsZero() {
-					timings.DNSLookup = time.Since(dnsStart)
-				}
-			},
-			ConnectStart: func(_, _ string) {
-				connectStart = time.Now()
-			},
-			ConnectDone: func(_, _ string, _ error) {
-				if !connectStart.IsZero() {
-					timings.TCPConnection = time.Since(connectStart)
-				}
-			},
-			TLSHandshakeStart: func() {
-				tlsStart = time.Now()
-			},
-			TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
-				if !tlsStart.IsZero() {
-					timings.TLSHandshake = time.Since(tlsStart)
-				}
-			},
-		}
-
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+		timingData = &requestTimings{connectStarts: make(map[string]time.Time)}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), timingData.trace()))
 	}
 
 	slog.Debug("fetching URL", "url", url)
@@ -114,34 +84,20 @@ func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
 		return nil, err
 	}
 
-	// Read the body to measure content transfer time
-	var contentTransferStart time.Time
-	if c.showTimings && timings != nil {
-		contentTransferStart = time.Now()
-	}
-
+	contentTransferStart := time.Now()
 	_, readErr := io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
-
 	duration := time.Since(start)
-
 	if readErr != nil {
 		return nil, readErr
 	}
 
-	// Calculate timing breakdowns
-	if c.showTimings && timings != nil {
-		timings.Total = duration
-
-		if !contentTransferStart.IsZero() {
-			timings.ContentTransfer = time.Since(contentTransferStart)
-
-			// Server processing = total - (dns + tcp + tls + content transfer)
-			overhead := timings.DNSLookup + timings.TCPConnection + timings.TLSHandshake + timings.ContentTransfer
-			if duration > overhead {
-				timings.ServerProcessing = duration - overhead
-			}
-		}
+	var timings *Timings
+	if timingData != nil {
+		snapshot := timingData.snapshot()
+		snapshot.Total = duration
+		snapshot.ContentTransfer = time.Since(contentTransferStart)
+		timings = &snapshot
 	}
 
 	c.redirectMu.Lock()

@@ -2,9 +2,12 @@ package httpinfo
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -27,6 +30,57 @@ func TestNewClient(t *testing.T) {
 
 	if client.showTimings {
 		t.Error("expected showTimings to be false")
+	}
+}
+
+type concurrentTraceTransport struct{}
+
+func (concurrentTraceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	trace := httptrace.ContextClientTrace(req.Context())
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				trace.ConnectStart("tcp", "test:80")
+				trace.ConnectDone("tcp", "test:80", nil)
+			}
+		}()
+	}
+	wg.Wait()
+	return &http.Response{StatusCode: 200, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+}
+
+func TestClientFetchConcurrentTimingCallbacks(t *testing.T) {
+	client := NewClient(time.Second, false, true)
+	client.httpClient.Transport = concurrentTraceTransport{}
+	resp, err := client.Fetch(context.Background(), "http://test/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Timings == nil || resp.Timings.Total != resp.Duration {
+		t.Fatalf("unexpected timings: %+v", resp)
+	}
+}
+
+func TestClientFetchTimings(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		time.Sleep(20 * time.Millisecond)
+		if _, err := w.Write([]byte("body")); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	resp, err := NewClient(time.Second, false, true).Fetch(context.Background(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Timings == nil || resp.Timings.ServerProcessing < 10*time.Millisecond || resp.Timings.ContentTransfer < 10*time.Millisecond || resp.Timings.TLSHandshake == 0 {
+		t.Fatalf("missing timing stages: %+v", resp.Timings)
 	}
 }
 
