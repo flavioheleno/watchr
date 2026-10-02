@@ -2,7 +2,7 @@
 
 A modern CLI tool for retrieving domain registration details, TLS certificate information, HTTP responses, and DNS records.
 
-[![Go Version](https://img.shields.io/badge/Go-1.25.4-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26.0-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 
@@ -77,7 +77,7 @@ watchr http -v https://api.example.com
 
 ### Prerequisites
 
-- Go 1.25.4 or later
+- Go 1.26.0 or later
 - Make (optional, for using Makefile commands)
 
 ### Building
