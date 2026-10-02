@@ -18,7 +18,6 @@ import (
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
-	rdapClient *rdaplib.Client
 }
 
 func NewClient(timeout time.Duration) *Client {
@@ -26,13 +25,8 @@ func NewClient(timeout time.Duration) *Client {
 		Timeout: timeout,
 	}
 
-	rdapClient := &rdaplib.Client{
-		Transport: rdaplib.NewBootstrapFetcher(httpClient, rdaplib.IANABootstrap, nil),
-	}
-
 	return &Client{
 		httpClient: httpClient,
-		rdapClient: rdapClient,
 	}
 }
 
@@ -68,6 +62,9 @@ func (c *Client) queryURL(ctx context.Context, url string) (*Response, error) {
 }
 
 func (c *Client) QueryDomain(ctx context.Context, domain string) (*Response, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	domain = strings.ToLower(strings.TrimSpace(domain))
 
 	if c.baseURL != "" {
@@ -78,12 +75,24 @@ func (c *Client) QueryDomain(ctx context.Context, domain string) (*Response, err
 	}
 
 	slog.Debug("querying domain", "domain", domain)
-	domainObj, _, err := c.rdapClient.Domain(domain, nil, nil)
+	rdapClient := &rdaplib.Client{
+		Transport: rdaplib.NewBootstrapFetcher(contextClient{ctx: ctx, client: c.httpClient}, rdaplib.IANABootstrap, nil),
+	}
+	domainObj, _, err := rdapClient.Domain(domain, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return convertDomainToResponse(domainObj), nil
+}
+
+type contextClient struct {
+	ctx    context.Context
+	client *http.Client
+}
+
+func (c contextClient) Do(req *http.Request) (*http.Response, error) {
+	return c.client.Do(req.Clone(c.ctx))
 }
 
 func convertDomainToResponse(d *protocol.Domain) *Response {
