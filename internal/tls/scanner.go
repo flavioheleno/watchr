@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"time"
 )
 
@@ -34,23 +35,14 @@ var tlsVersionLookup = map[string]uint16{
 
 var preferredVersionOrder = []string{"TLS 1.3", "TLS 1.2", "TLS 1.1", "TLS 1.0"}
 
-var cipherSuitesByVersion = map[string][]uint16{
-	"TLS 1.0": {
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-	},
-	"TLS 1.1": {
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-	},
-	"TLS 1.2": {
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-	},
+func cipherSuitesForVersion(version uint16) []uint16 {
+	var suites []uint16
+	for _, suite := range append(tls.CipherSuites(), tls.InsecureCipherSuites()...) {
+		if version != tls.VersionTLS13 && slices.Contains(suite.SupportedVersions, version) {
+			suites = append(suites, suite.ID)
+		}
+	}
+	return suites
 }
 
 func NewScanner(timeout time.Duration) *Scanner {
@@ -69,25 +61,18 @@ func (s *Scanner) TestVersions(ctx context.Context, host, port string) (*TestRes
 		Host:              host,
 		Port:              port,
 		SupportedVersions: make(map[string]bool, len(tlsVersions)),
+		ScanLimitations:   []string{"Protocol and cipher probes are limited to Go crypto/tls capabilities; other suites may be supported by the server."},
 	}
 
-	var anySupported bool
 	for _, info := range tlsVersions {
 		supported, err := s.testVersion(ctx, host, port, info.value)
 		if err != nil {
 			return nil, err
 		}
 		result.SupportedVersions[info.name] = supported
-		if supported {
-			anySupported = true
-		}
 	}
 
 	result.PreferredVersion = highestSupported(result.SupportedVersions)
-
-	if !anySupported {
-		return result, nil
-	}
 
 	return result, nil
 }
@@ -99,10 +84,10 @@ func (s *Scanner) EnumerateCiphers(ctx context.Context, host, port, version stri
 	}
 
 	if value == tls.VersionTLS13 {
-		return s.enumerateTLS13(ctx, host, port)
+		return nil, fmt.Errorf("TLS 1.3 cipher enumeration is unavailable in Go crypto/tls")
 	}
 
-	suites := cipherSuitesByVersion[version]
+	suites := cipherSuitesForVersion(value)
 	if len(suites) == 0 {
 		return nil, fmt.Errorf("no cipher suites configured for %s", version)
 	}
@@ -175,11 +160,19 @@ func (s *Scanner) FullTest(ctx context.Context, host, port string, includeTLS13 
 		if !result.SupportedVersions[info.name] {
 			continue
 		}
-		if info.value == tls.VersionTLS13 && !includeTLS13 {
+		if info.value == tls.VersionTLS13 {
+			if includeTLS13 {
+				cipher, err := s.negotiatedCipher(ctx, host, result.Port, info.value)
+				if err != nil {
+					return nil, err
+				}
+				result.NegotiatedTLS13Cipher = cipher
+				result.ScanLimitations = append(result.ScanLimitations, "TLS 1.3 shows one negotiated cipher; its cipher suites cannot be enumerated by Go crypto/tls.")
+			}
 			continue
 		}
 
-		ciphers, err := s.EnumerateCiphers(ctx, host, port, info.name)
+		ciphers, err := s.EnumerateCiphers(ctx, host, result.Port, info.name)
 		if err != nil {
 			return nil, err
 		}
@@ -188,8 +181,14 @@ func (s *Scanner) FullTest(ctx context.Context, host, port string, includeTLS13 
 	}
 
 	result.PreferredVersion = highestSupported(result.SupportedVersions)
-	if suites := result.CipherSuites[result.PreferredVersion]; len(suites) > 0 {
-		result.PreferredCipher = suites[0]
+	if result.NegotiatedTLS13Cipher != "" {
+		result.PreferredCipher = result.NegotiatedTLS13Cipher
+	} else if result.PreferredVersion != "" && result.PreferredVersion != "TLS 1.3" {
+		cipher, err := s.negotiatedCipher(ctx, host, result.Port, tlsVersionLookup[result.PreferredVersion])
+		if err != nil {
+			return nil, err
+		}
+		result.PreferredCipher = cipher
 	}
 
 	s.DetectVulnerabilities(result)
@@ -197,20 +196,21 @@ func (s *Scanner) FullTest(ctx context.Context, host, port string, includeTLS13 
 	return result, nil
 }
 
-func (s *Scanner) enumerateTLS13(ctx context.Context, host, port string) ([]string, error) {
+func (s *Scanner) negotiatedCipher(ctx context.Context, host, port string, version uint16) (string, error) {
 	cfg := &tls.Config{
 		ServerName:         host,
-		MinVersion:         tls.VersionTLS13,
-		MaxVersion:         tls.VersionTLS13,
+		MinVersion:         version,
+		MaxVersion:         version,
+		CipherSuites:       cipherSuitesForVersion(version),
 		InsecureSkipVerify: true,
 	}
 
 	conn, fatal, err := s.tryHandshake(ctx, host, port, cfg)
 	if err != nil {
 		if fatal {
-			return nil, err
+			return "", err
 		}
-		return nil, fmt.Errorf("TLS 1.3 not supported")
+		return "", err
 	}
 	defer func() {
 		_ = conn.Close()
@@ -218,10 +218,10 @@ func (s *Scanner) enumerateTLS13(ctx context.Context, host, port string) ([]stri
 
 	state := conn.ConnectionState()
 	if state.CipherSuite == 0 {
-		return nil, fmt.Errorf("unable to determine TLS 1.3 cipher suite")
+		return "", fmt.Errorf("unable to determine negotiated cipher suite")
 	}
 
-	return []string{tls.CipherSuiteName(state.CipherSuite)}, nil
+	return tls.CipherSuiteName(state.CipherSuite), nil
 }
 
 func (s *Scanner) testVersion(ctx context.Context, host, port string, version uint16) (bool, error) {
@@ -229,6 +229,7 @@ func (s *Scanner) testVersion(ctx context.Context, host, port string, version ui
 		ServerName:         host,
 		MinVersion:         version,
 		MaxVersion:         version,
+		CipherSuites:       cipherSuitesForVersion(version),
 		InsecureSkipVerify: true,
 	}
 
@@ -265,8 +266,8 @@ func (s *Scanner) tryHandshake(ctx context.Context, host, port string, cfg *tls.
 		if closeErr := client.Close(); closeErr != nil {
 			err = errors.Join(err, closeErr)
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, true, err
+		if ctxWithTimeout.Err() != nil {
+			return nil, true, ctxWithTimeout.Err()
 		}
 		return nil, false, err
 	}

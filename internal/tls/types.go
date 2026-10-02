@@ -36,11 +36,13 @@ type Subject struct {
 }
 
 type TestResult struct {
-	Host              string              `json:"host"`
-	Port              string              `json:"port"`
-	SupportedVersions map[string]bool     `json:"supportedVersions"`
-	CipherSuites      map[string][]string `json:"cipherSuites,omitempty"`
-	Vulnerabilities   []string            `json:"vulnerabilities,omitempty"`
-	PreferredVersion  string              `json:"preferredVersion,omitempty"`
-	PreferredCipher   string              `json:"preferredCipher,omitempty"`
+	Host                  string              `json:"host"`
+	Port                  string              `json:"port"`
+	SupportedVersions     map[string]bool     `json:"supportedVersions"`
+	CipherSuites          map[string][]string `json:"cipherSuites,omitempty"`
+	Vulnerabilities       []string            `json:"vulnerabilities,omitempty"`
+	PreferredVersion      string              `json:"preferredVersion,omitempty"`
+	PreferredCipher       string              `json:"preferredCipher,omitempty"`
+	NegotiatedTLS13Cipher string              `json:"negotiatedTLS13Cipher,omitempty"`
+	ScanLimitations       []string            `json:"scanLimitations,omitempty"`
 }

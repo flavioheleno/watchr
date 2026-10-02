@@ -21,7 +21,8 @@ The command connects to the specified host and retrieves the TLS certificate
 chain, showing details such as subject, issuer, validity dates, and more.
 
 Use --scan-protocols to test which TLS versions are supported.
-Use --scan-ciphers to enumerate supported cipher suites for each TLS version.
+Use --scan-ciphers to enumerate Go-supported TLS 1.0-1.2 cipher suites.
+For TLS 1.3, only the negotiated cipher is reported; enumeration is unavailable.
 Use --full-scan to perform a comprehensive security scan including protocol
 versions, cipher suites, and vulnerability detection.`,
 		Args: cobra.ExactArgs(1),

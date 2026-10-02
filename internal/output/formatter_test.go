@@ -585,3 +585,19 @@ Name Server: NS2.EXAMPLE.COM
 Domain Status: clientTransferProhibited
 `)
 }
+
+func TestFormatterTLSScanCoverage(t *testing.T) {
+	var result tlsinfo.TestResult
+	if err := json.Unmarshal([]byte(`{"host":"example.com","port":"443","supportedVersions":{"TLS 1.3":true},"negotiatedTLS13Cipher":"TLS_AES_128_GCM_SHA256","scanLimitations":["Only Go-supported suites can be probed"]}`), &result); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := NewFormatter("text", &buf).OutputTLSScan(&result); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"Negotiated TLS 1.3 Cipher: TLS_AES_128_GCM_SHA256", "Only Go-supported suites can be probed"} {
+		if !strings.Contains(buf.String(), text) {
+			t.Fatalf("missing %q in %s", text, buf.String())
+		}
+	}
+}

@@ -2,183 +2,119 @@ package tls
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestNewScanner(t *testing.T) {
-	timeout := 5 * time.Second
-	scanner := NewScanner(timeout)
-
-	if scanner == nil {
-		t.Fatal("expected non-nil scanner")
-	}
-
-	if scanner.timeout != timeout {
-		t.Errorf("expected timeout %v, got %v", timeout, scanner.timeout)
-	}
-}
-
-func TestScanner_TestVersions_Success(t *testing.T) {
-	scanner := NewScanner(10 * time.Second)
-	ctx := context.Background()
-
-	result, err := scanner.TestVersions(ctx, "example.com", "443")
-	if err != nil {
-		t.Fatalf("TestVersions failed: %v", err)
-	}
-
-	if result.Host != "example.com" {
-		t.Errorf("expected host 'example.com', got %s", result.Host)
-	}
-
-	if result.Port != "443" {
-		t.Errorf("expected port '443', got %s", result.Port)
-	}
-
-	if len(result.SupportedVersions) == 0 {
-		t.Error("expected version test results")
-	}
-
-	// Verify that at least one modern TLS version is supported
-	// Note: We don't assert specific version support for external servers
-	// as their TLS configuration may change over time
-	if !result.SupportedVersions["TLS 1.2"] && !result.SupportedVersions["TLS 1.3"] {
-		t.Error("example.com should support at least TLS 1.2 or 1.3")
-	}
-}
-
-func TestScanner_TestVersions_InvalidHost(t *testing.T) {
-	scanner := NewScanner(5 * time.Second)
-	ctx := context.Background()
-
-	_, err := scanner.TestVersions(ctx, "invalid-host-does-not-exist.local", "443")
-	if err == nil {
-		t.Error("expected error for invalid host")
-	}
-}
-
-func TestScanner_TestVersions_Timeout(t *testing.T) {
-	scanner := NewScanner(1 * time.Millisecond)
-	ctx := context.Background()
-
-	_, err := scanner.TestVersions(ctx, "example.com", "443")
-	if err == nil {
-		t.Error("expected timeout error")
-	}
-
-	if !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "deadline") {
-		t.Logf("got error: %v (expected timeout/deadline)", err)
-	}
-}
-
-func TestScanner_EnumerateCiphers_TLS12(t *testing.T) {
-	scanner := NewScanner(10 * time.Second)
-	ctx := context.Background()
-
-	ciphers, err := scanner.EnumerateCiphers(ctx, "example.com", "443", "TLS 1.2")
-	if err != nil {
-		t.Fatalf("EnumerateCiphers failed: %v", err)
-	}
-
-	if len(ciphers) == 0 {
-		t.Error("expected at least one supported cipher suite for TLS 1.2")
-	}
-
-	for _, cipher := range ciphers {
-		if cipher == "" {
-			t.Error("expected non-empty cipher suite name")
-		}
-		if !strings.Contains(cipher, "TLS_") {
-			t.Errorf("expected cipher name to start with TLS_, got %s", cipher)
-		}
-	}
-}
-
-func TestScanner_EnumerateCiphers_InvalidVersion(t *testing.T) {
-	scanner := NewScanner(5 * time.Second)
-	ctx := context.Background()
-
-	_, err := scanner.EnumerateCiphers(ctx, "example.com", "443", "TLS 9.9")
-	if err == nil {
-		t.Error("expected error for invalid TLS version")
-	}
-}
-
-func TestScanner_DetectVulnerabilities(t *testing.T) {
-	result := &TestResult{
-		Host: "example.com",
-		Port: "443",
-		SupportedVersions: map[string]bool{
-			"TLS 1.0": false,
-			"TLS 1.1": false,
-			"TLS 1.2": true,
-			"TLS 1.3": true,
-		},
-		CipherSuites: map[string][]string{
-			"TLS 1.2": {"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
-		},
-	}
-
-	scanner := NewScanner(5 * time.Second)
-	scanner.DetectVulnerabilities(result)
-
-	if len(result.Vulnerabilities) > 0 {
-		for _, vuln := range result.Vulnerabilities {
-			if strings.Contains(vuln, "TLS 1.0") || strings.Contains(vuln, "TLS 1.1") {
-				t.Errorf("should not report TLS 1.0/1.1 as vulnerability when not supported")
+func TestScannerVersionAndCipherCoverage(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		version uint16
+		cipher  uint16
+	}{
+		{"TLS 1.0", tls.VersionTLS10, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA},
+		{"TLS 1.1", tls.VersionTLS11, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA},
+		{"TLS 1.2", tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA},
+		{"TLS 1.2", tls.VersionTLS12, tls.TLS_RSA_WITH_AES_128_CBC_SHA},
+		{"TLS 1.2", tls.VersionTLS12, tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA},
+	} {
+		t.Run(tt.name+"/"+tls.CipherSuiteName(tt.cipher), func(t *testing.T) {
+			host, port := startTLSServer(t, &tls.Config{
+				MinVersion: tt.version, MaxVersion: tt.version, CipherSuites: []uint16{tt.cipher},
+			})
+			scanner := NewScanner(time.Second)
+			result, err := scanner.FullTest(context.Background(), host, port, true)
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			for _, info := range tlsVersions {
+				if result.SupportedVersions[info.name] != (info.value == tt.version) {
+					t.Fatalf("incorrect versions: %v", result.SupportedVersions)
+				}
+			}
+			cipher := tls.CipherSuiteName(tt.cipher)
+			if !slices.Equal(result.CipherSuites[tt.name], []string{cipher}) {
+				t.Fatalf("unexpected suites: %v", result.CipherSuites)
+			}
+			if result.PreferredCipher != cipher {
+				t.Fatalf("incorrect negotiated cipher: %s", result.PreferredCipher)
+			}
+		})
 	}
 }
 
-func TestScanner_DetectVulnerabilities_WeakTLS(t *testing.T) {
-	result := &TestResult{
-		Host: "test.com",
-		Port: "443",
-		SupportedVersions: map[string]bool{
-			"TLS 1.0": true,
-			"TLS 1.1": true,
-			"TLS 1.2": true,
-			"TLS 1.3": false,
-		},
-	}
-
-	scanner := NewScanner(5 * time.Second)
-	scanner.DetectVulnerabilities(result)
-
-	hasWarning := false
-	for _, vuln := range result.Vulnerabilities {
-		if strings.Contains(vuln, "TLS 1.0") || strings.Contains(vuln, "TLS 1.1") {
-			hasWarning = true
-			break
-		}
-	}
-
-	if !hasWarning {
-		t.Error("expected vulnerability warning for TLS 1.0/1.1 support")
-	}
-}
-
-func TestScanner_FullTest(t *testing.T) {
-	scanner := NewScanner(30 * time.Second)
-	ctx := context.Background()
-
-	result, err := scanner.FullTest(ctx, "example.com", "443", false)
+func TestScannerTLS13ReportsNegotiatedCipher(t *testing.T) {
+	host, port := startTLSServer(t, &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13})
+	scanner := NewScanner(time.Second)
+	result, err := scanner.FullTest(context.Background(), host, port, true)
 	if err != nil {
-		t.Fatalf("FullTest failed: %v", err)
+		t.Fatal(err)
 	}
-
-	if result.Host != "example.com" {
-		t.Errorf("expected host 'example.com', got %s", result.Host)
+	if len(result.CipherSuites["TLS 1.3"]) != 0 {
+		t.Fatalf("negotiated cipher mislabeled as enumeration: %v", result.CipherSuites)
 	}
-
-	if len(result.SupportedVersions) == 0 {
-		t.Error("expected version test results")
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
 	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["negotiatedTLS13Cipher"] == nil || fields["scanLimitations"] == nil {
+		t.Fatalf("missing negotiation/coverage metadata: %s", data)
+	}
+	if _, err := scanner.EnumerateCiphers(context.Background(), host, port, "TLS 1.3"); err == nil {
+		t.Fatal("TLS 1.3 enumeration should explicitly report its limitation")
+	}
+}
 
-	if result.PreferredVersion == "" {
-		t.Error("expected preferred version to be set")
+func TestScannerErrors(t *testing.T) {
+	scanner := NewScanner(time.Second)
+	if _, err := scanner.TestVersions(context.Background(), "", "443"); err == nil {
+		t.Fatal("expected missing host error")
+	}
+	if _, err := scanner.EnumerateCiphers(context.Background(), "127.0.0.1", "443", "TLS 9.9"); err == nil {
+		t.Fatal("expected version error")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := scanner.TestVersions(ctx, "127.0.0.1", "443"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
+	}
+	host, port := startStalledServer(t)
+	if _, err := NewScanner(20*time.Millisecond).TestVersions(context.Background(), host, port); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline error, got %v", err)
+	}
+}
+
+func TestScannerDetectVulnerabilities(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		versions map[string]bool
+		want     int
+	}{
+		{"modern", map[string]bool{"TLS 1.2": true, "TLS 1.3": true}, 0},
+		{"legacy", map[string]bool{"TLS 1.0": true, "TLS 1.1": true}, 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result := &TestResult{SupportedVersions: tt.versions}
+			scanner := NewScanner(time.Second)
+			scanner.DetectVulnerabilities(result)
+			scanner.DetectVulnerabilities(result)
+			if len(result.Vulnerabilities) != tt.want {
+				t.Fatalf("warnings: %v", result.Vulnerabilities)
+			}
+			for _, warning := range result.Vulnerabilities {
+				if !strings.Contains(warning, "TLS") {
+					t.Fatalf("unexpected warning: %s", warning)
+				}
+			}
+		})
 	}
 }

@@ -520,6 +520,21 @@ func (f *Formatter) outputTLSScanText(result *tlsinfo.TestResult) error {
 			return err
 		}
 	}
+	if result.NegotiatedTLS13Cipher != "" {
+		if err := writeLine(f.writer, "\nNegotiated TLS 1.3 Cipher: %s\n", result.NegotiatedTLS13Cipher); err != nil {
+			return err
+		}
+	}
+	if len(result.ScanLimitations) > 0 {
+		if err := writeLine(f.writer, "\nScan Limitations:\n"); err != nil {
+			return err
+		}
+		for _, limitation := range result.ScanLimitations {
+			if err := writeLine(f.writer, "  %s\n", limitation); err != nil {
+				return err
+			}
+		}
+	}
 
 	if len(result.Vulnerabilities) > 0 {
 		if err := writeLine(f.writer, "\nSecurity Warnings:\n"); err != nil {
