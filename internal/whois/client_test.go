@@ -1,49 +1,69 @@
 package whois
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
+
+	whoislib "github.com/likexian/whois"
 )
 
-func TestNewClient(t *testing.T) {
-	timeout := 5 * time.Second
-	client := NewClient(timeout)
+type fixtureDialer struct{ queries chan string }
 
-	if client == nil {
-		t.Fatal("expected non-nil client")
-	}
-
-	if client.timeout != timeout {
-		t.Errorf("expected timeout %v, got %v", timeout, client.timeout)
-	}
+func (d fixtureDialer) Dial(_, address string) (net.Conn, error) {
+	client, server := net.Pipe()
+	go func() {
+		defer func() { _ = server.Close() }()
+		query, err := bufio.NewReader(server).ReadString('\n')
+		if err != nil {
+			return
+		}
+		d.queries <- strings.TrimSpace(query)
+		response := "Domain Name: EXAMPLE.COM\nRegistrar: Example Registrar\n"
+		if address == "whois.iana.org:43" {
+			response = "whois: registry.test\n"
+		}
+		_, _ = fmt.Fprint(server, response)
+	}()
+	return client, nil
 }
 
-func TestClient_Query(t *testing.T) {
-	client := NewClient(10 * time.Second)
-	ctx := context.Background()
-
-	result, err := client.Query(ctx, "example.com")
+func TestClientQuery(t *testing.T) {
+	queries := make(chan string, 4)
+	client := NewClient(time.Second)
+	client.client.SetDialer(fixtureDialer{queries: queries})
+	data, err := client.Query(context.Background(), " EXAMPLE.COM ")
 	if err != nil {
-		t.Fatalf("Query failed: %v", err)
+		t.Fatal(err)
 	}
-
-	if result == "" {
-		t.Error("expected non-empty result")
+	if !strings.Contains(data, "Domain Name: EXAMPLE.COM") {
+		t.Fatalf("unexpected result: %s", data)
 	}
-
-	if !strings.Contains(strings.ToLower(result), "domain") {
-		t.Error("expected result to contain 'domain'")
+	if got := <-queries; got != "com" {
+		t.Fatalf("unexpected bootstrap query: %s", got)
+	}
+	if got := <-queries; got != "example.com" {
+		t.Fatalf("domain not normalized: %s", got)
 	}
 }
 
-func TestClient_Query_InvalidDomain(t *testing.T) {
-	client := NewClient(5 * time.Second)
-	ctx := context.Background()
+func TestClientQueryEmptyDomain(t *testing.T) {
+	_, err := NewClient(time.Second).Query(context.Background(), " ")
+	if !errors.Is(err, whoislib.ErrDomainEmpty) {
+		t.Fatalf("expected empty domain error, got %v", err)
+	}
+}
 
-	result, err := client.Query(ctx, "invalid..domain")
-	if err == nil && result == "" {
-		t.Error("expected error or empty result for invalid domain")
+func TestClientQueryCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewClient(time.Second).Query(ctx, "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
 	}
 }

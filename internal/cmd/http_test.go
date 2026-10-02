@@ -1,64 +1,41 @@
 package cmd
 
 import (
-	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestHTTPCommand_Execute(t *testing.T) {
-	cmd := NewHTTPCommand()
-
-	if !strings.HasPrefix(cmd.Use, "http") {
-		t.Errorf("expected Use to start with 'http', got %s", cmd.Use)
-	}
-
-	if cmd.Short == "" {
-		t.Error("expected non-empty Short description")
-	}
-
-	if cmd.RunE == nil {
-		t.Error("expected RunE to be set")
-	}
-}
-
-func TestHTTPCommand_RequiresArgument(t *testing.T) {
-	cmd := NewHTTPCommand()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-
-	cmd.SetArgs([]string{})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Error("expected error when no URL argument provided")
-	}
-}
-
-func TestHTTPCommand_WithValidURL(t *testing.T) {
-	cmd := NewHTTPCommand()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-
-	cmd.SetArgs([]string{"https://example.com"})
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	output := buf.String()
-	if output == "" {
-		t.Error("expected non-empty output")
-	}
-
-	if !strings.Contains(output, "example.com") {
-		t.Error("expected output to contain URL")
-	}
-
-	if !strings.Contains(output, "Status") {
-		t.Error("expected output to contain status")
+func TestHTTPCommandLocalServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/redirect" {
+			http.Redirect(w, req, "/final", http.StatusFound)
+			return
+		}
+		w.Header().Add("Set-Cookie", "a=1")
+		w.Header().Add("Set-Cookie", "b=2")
+		if _, err := w.Write([]byte("hello")); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	for _, tt := range []struct {
+		flags      []string
+		path, want string
+	}{
+		{nil, "/final", "Status: 200 OK"},
+		{[]string{"--format", "json"}, "/final", "\"Set-Cookie\": ["},
+		{[]string{"--timings"}, "/final", "Timing Breakdown:"},
+		{nil, "/redirect", "Status Code: 302"},
+		{[]string{"--follow-redirects"}, "/redirect", "Redirect Chain:"},
+	} {
+		out, err := executeTestCommand(append([]string{"http", server.URL + tt.path}, tt.flags...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, tt.want) {
+			t.Fatalf("missing %q in %s", tt.want, out)
+		}
 	}
 }
