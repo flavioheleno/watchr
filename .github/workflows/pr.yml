@@ -24,7 +24,8 @@ jobs:
       - name: Verify formatting (gofmt)
         run: |
           set -euo pipefail
-          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          mapfile -d '' -t go_files < <(git ls-files -z '*.go')
+          unformatted="$(gofmt -l "${go_files[@]}")"
           if [ -n "$unformatted" ]; then
             echo "The following files are not gofmt-formatted:"
             echo "$unformatted"
