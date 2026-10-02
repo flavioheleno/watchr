@@ -42,19 +42,23 @@ func getSystemDNS() string {
 }
 
 func ensurePort(nameserver string) string {
-	if strings.Contains(nameserver, ":") {
+	if _, _, err := net.SplitHostPort(nameserver); err == nil {
 		return nameserver
 	}
-
-	if net.ParseIP(nameserver) != nil {
-		return net.JoinHostPort(nameserver, "53")
+	if strings.HasPrefix(nameserver, "[") && strings.HasSuffix(nameserver, "]") {
+		nameserver = nameserver[1 : len(nameserver)-1]
 	}
-
-	return nameserver
+	return net.JoinHostPort(nameserver, "53")
 }
 
 func (c *Client) Query(ctx context.Context, domain string, recordType string) (*Response, error) {
+	if c.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
 	domain = mdns.Fqdn(domain)
+	recordType = strings.ToUpper(recordType)
 
 	qtype, err := parseRecordType(recordType)
 	if err != nil {
@@ -64,6 +68,7 @@ func (c *Client) Query(ctx context.Context, domain string, recordType string) (*
 	m := new(mdns.Msg)
 	m.SetQuestion(domain, qtype)
 	m.RecursionDesired = true
+	m.SetEdns0(1232, false)
 
 	client := &mdns.Client{
 		Timeout: c.timeout,
@@ -72,20 +77,24 @@ func (c *Client) Query(ctx context.Context, domain string, recordType string) (*
 	slog.Debug("querying DNS", "domain", domain, "type", recordType, "nameserver", c.nameserver)
 	start := time.Now()
 	r, _, err := client.ExchangeContext(ctx, m, c.nameserver)
-	queryTime := time.Since(start)
 
 	if err != nil {
 		return nil, err
 	}
+	if r.Truncated {
+		client.Net = "tcp"
+		r, _, err = client.ExchangeContext(ctx, m, c.nameserver)
+		if err != nil {
+			return nil, err
+		}
+		if r.Truncated {
+			return nil, fmt.Errorf("DNS response remains truncated over TCP")
+		}
+	}
+	queryTime := time.Since(start)
 
 	if r.Rcode != mdns.RcodeSuccess {
-		return &Response{
-			Domain:     domain,
-			RecordType: recordType,
-			Nameserver: c.nameserver,
-			QueryTime:  queryTime,
-			Records:    []Record{},
-		}, nil
+		return nil, fmt.Errorf("DNS query for %s returned %s (rcode %d)", domain, mdns.RcodeToString[r.Rcode], r.Rcode)
 	}
 
 	response := &Response{
@@ -150,7 +159,7 @@ func parseAnswer(ans mdns.RR) *Record {
 	case *mdns.NS:
 		record.Value = rr.Ns
 	case *mdns.TXT:
-		record.Value = strings.Join(rr.Txt, " ")
+		record.Value = strings.Join(rr.Txt, "")
 	case *mdns.SOA:
 		record.Value = fmt.Sprintf("%s %s %d %d %d %d %d",
 			rr.Ns, rr.Mbox, rr.Serial, rr.Refresh, rr.Retry, rr.Expire, rr.Minttl)

@@ -2,205 +2,171 @@ package dns
 
 import (
 	"context"
+	"errors"
+	"net"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	mdns "github.com/miekg/dns"
 )
 
-func TestNewClient(t *testing.T) {
-	timeout := 5 * time.Second
-	nameserver := "8.8.8.8:53"
-
-	client := NewClient(timeout, nameserver)
-
-	if client == nil {
-		t.Fatal("expected non-nil client")
+func startDNSServer(t *testing.T, handler mdns.HandlerFunc) string {
+	t.Helper()
+	tcp, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if client.timeout != timeout {
-		t.Errorf("expected timeout %v, got %v", timeout, client.timeout)
+	udp, err := net.ListenPacket("udp", tcp.Addr().String())
+	if err != nil {
+		_ = tcp.Close()
+		t.Fatal(err)
 	}
+	for _, server := range []*mdns.Server{{Listener: tcp, Handler: handler}, {PacketConn: udp, Handler: handler}} {
+		started := make(chan struct{})
+		done := make(chan error, 1)
+		server.NotifyStartedFunc = func() { close(started) }
+		go func() { done <- server.ActivateAndServe() }()
+		<-started
+		t.Cleanup(func() {
+			if err := server.Shutdown(); err != nil {
+				t.Error(err)
+			}
+			if err := <-done; err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	return tcp.Addr().String()
+}
 
-	if client.nameserver != nameserver {
-		t.Errorf("expected nameserver %s, got %s", nameserver, client.nameserver)
+func TestClientQueryRecords(t *testing.T) {
+	for _, tt := range []struct{ recordType, answer, value string }{
+		{"A", "example.com. 60 IN A 192.0.2.1", "192.0.2.1"},
+		{"AAAA", "example.com. 60 IN AAAA 2001:db8::1", "2001:db8::1"},
+		{"MX", "example.com. 60 IN MX 10 mail.example.com.", "10 mail.example.com."},
+		{"NS", "example.com. 60 IN NS ns.example.com.", "ns.example.com."},
+		{"CNAME", "example.com. 60 IN CNAME target.example.com.", "target.example.com."},
+		{"TXT", "example.com. 60 IN TXT \"abc\" \"def\"", "abcdef"},
+		{"SOA", "example.com. 60 IN SOA ns.example.com. admin.example.com. 1 2 3 4 5", "ns.example.com. admin.example.com. 1 2 3 4 5"},
+		{"SRV", "example.com. 60 IN SRV 1 2 443 target.example.com.", "1 2 443 target.example.com."},
+		{"PTR", "example.com. 60 IN PTR target.example.com.", "target.example.com."},
+		{"CAA", "example.com. 60 IN CAA 0 issue \"example.com\"", "0 issue example.com"},
+	} {
+		t.Run(tt.recordType, func(t *testing.T) {
+			answer, err := mdns.NewRR(tt.answer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			address := startDNSServer(t, func(w mdns.ResponseWriter, req *mdns.Msg) {
+				msg := new(mdns.Msg)
+				msg.SetReply(req)
+				msg.Answer = []mdns.RR{answer}
+				if err := w.WriteMsg(msg); err != nil {
+					t.Error(err)
+				}
+			})
+			resp, err := NewClient(time.Second, address).Query(context.Background(), "example.com", tt.recordType)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []Record{{Type: tt.recordType, Value: tt.value, TTL: 60}}
+			if !slices.Equal(resp.Records, want) {
+				t.Fatalf("got %+v, want %+v", resp.Records, want)
+			}
+			if resp.Nameserver != address || resp.Domain != "example.com." || resp.QueryTime <= 0 {
+				t.Fatalf("unexpected response: %+v", resp)
+			}
+		})
 	}
 }
 
-func TestClient_Query_A(t *testing.T) {
-	client := NewClient(10*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "example.com", "A")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
+func TestClientQueryResponseCodes(t *testing.T) {
+	for _, code := range []int{mdns.RcodeSuccess, mdns.RcodeNameError, mdns.RcodeServerFailure, mdns.RcodeRefused} {
+		t.Run(mdns.RcodeToString[code], func(t *testing.T) {
+			address := startDNSServer(t, func(w mdns.ResponseWriter, req *mdns.Msg) {
+				msg := new(mdns.Msg)
+				msg.SetRcode(req, code)
+				if err := w.WriteMsg(msg); err != nil {
+					t.Error(err)
+				}
+			})
+			resp, err := NewClient(time.Second, address).Query(context.Background(), "example.com", "A")
+			if code == mdns.RcodeSuccess {
+				if err != nil || resp == nil || len(resp.Records) != 0 {
+					t.Fatalf("expected successful empty answer: %+v %v", resp, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), mdns.RcodeToString[code]) {
+				t.Fatalf("response code lost: %+v %v", resp, err)
+			}
+		})
 	}
+}
 
-	if resp.Domain != "example.com." && resp.Domain != "example.com" {
-		t.Errorf("expected domain 'example.com' or 'example.com.', got %s", resp.Domain)
-	}
-
-	if resp.RecordType != "A" {
-		t.Errorf("expected record type 'A', got %s", resp.RecordType)
-	}
-
-	if len(resp.Records) == 0 {
-		t.Error("expected at least one A record")
-	}
-
-	for _, record := range resp.Records {
-		if record.Type != "A" {
-			t.Errorf("expected record type 'A', got %s", record.Type)
+func TestClientQueryRetriesTruncation(t *testing.T) {
+	address := startDNSServer(t, func(w mdns.ResponseWriter, req *mdns.Msg) {
+		msg := new(mdns.Msg)
+		msg.SetReply(req)
+		if w.RemoteAddr().Network() == "udp" {
+			msg.Truncated = true
+		} else {
+			msg.Answer = []mdns.RR{&mdns.TXT{Hdr: mdns.RR_Header{Name: "example.com.", Rrtype: mdns.TypeTXT, Class: mdns.ClassINET, Ttl: 60}, Txt: []string{strings.Repeat("x", 255), strings.Repeat("y", 255)}}}
 		}
-		if record.Value == "" {
-			t.Error("expected non-empty record value")
+		if err := w.WriteMsg(msg); err != nil {
+			t.Error(err)
 		}
-		if record.TTL == 0 {
-			t.Error("expected non-zero TTL")
+	})
+	resp, err := NewClient(time.Second, address).Query(context.Background(), "example.com", "TXT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Records) != 1 || len(resp.Records[0].Value) != 510 {
+		t.Fatalf("incomplete answer: %+v", resp)
+	}
+}
+
+func TestClientQueryRejectsTruncatedTCP(t *testing.T) {
+	address := startDNSServer(t, func(w mdns.ResponseWriter, req *mdns.Msg) {
+		msg := new(mdns.Msg)
+		msg.SetReply(req)
+		msg.Truncated = true
+		if err := w.WriteMsg(msg); err != nil {
+			t.Error(err)
 		}
-	}
-
-	if resp.QueryTime == 0 {
-		t.Error("expected non-zero query time")
-	}
-}
-
-func TestClient_Query_AAAA(t *testing.T) {
-	client := NewClient(10*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "example.com", "AAAA")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if resp.RecordType != "AAAA" {
-		t.Errorf("expected record type 'AAAA', got %s", resp.RecordType)
-	}
-
-	if len(resp.Records) == 0 {
-		t.Error("expected at least one AAAA record for example.com")
+	})
+	if _, err := NewClient(time.Second, address).Query(context.Background(), "example.com", "A"); err == nil {
+		t.Fatal("expected error for truncated TCP response")
 	}
 }
 
-func TestClient_Query_MX(t *testing.T) {
-	client := NewClient(10*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "example.com", "MX")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if resp.RecordType != "MX" {
-		t.Errorf("expected record type 'MX', got %s", resp.RecordType)
-	}
-
-	if len(resp.Records) == 0 {
-		t.Error("expected at least one MX record for example.com")
-	}
-
-	for _, record := range resp.Records {
-		if record.Type != "MX" {
-			t.Errorf("expected record type 'MX', got %s", record.Type)
-		}
+func TestEnsurePort(t *testing.T) {
+	for _, tt := range []struct{ input, want string }{
+		{"8.8.8.8", "8.8.8.8:53"}, {"localhost", "localhost:53"},
+		{"::1", "[::1]:53"}, {"[::1]", "[::1]:53"},
+		{"fe80::1%eth0", "[fe80::1%eth0]:53"},
+		{"[::1]:5353", "[::1]:5353"}, {"localhost:5353", "localhost:5353"},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := ensurePort(tt.input); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestClient_Query_NS(t *testing.T) {
-	client := NewClient(10*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "example.com", "NS")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
+func TestClientQueryErrors(t *testing.T) {
+	client := NewClient(time.Second, "127.0.0.1:53")
+	if _, err := client.Query(context.Background(), "example.com", "INVALID"); err == nil {
+		t.Fatal("expected record type error")
 	}
-
-	if resp.RecordType != "NS" {
-		t.Errorf("expected record type 'NS', got %s", resp.RecordType)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := client.Query(ctx, "example.com", "A"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
 	}
-
-	if len(resp.Records) == 0 {
-		t.Error("expected at least one NS record")
-	}
-}
-
-func TestClient_Query_TXT(t *testing.T) {
-	client := NewClient(10*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "example.com", "TXT")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if resp.RecordType != "TXT" {
-		t.Errorf("expected record type 'TXT', got %s", resp.RecordType)
-	}
-}
-
-func TestClient_Query_CNAME(t *testing.T) {
-	client := NewClient(10*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "www.example.com", "CNAME")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if resp.RecordType != "CNAME" {
-		t.Errorf("expected record type 'CNAME', got %s", resp.RecordType)
-	}
-}
-
-func TestClient_Query_InvalidDomain(t *testing.T) {
-	client := NewClient(5*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "this-domain-absolutely-does-not-exist-123456789.com", "A")
-
-	if err == nil && len(resp.Records) > 0 {
-		t.Error("expected error or empty records for non-existent domain")
-	}
-}
-
-func TestClient_Query_Timeout(t *testing.T) {
-	client := NewClient(1*time.Millisecond, "8.8.8.8:53")
-	ctx := context.Background()
-
-	_, err := client.Query(ctx, "example.com", "A")
-	if err == nil {
-		t.Error("expected timeout error")
-	}
-
-	if !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "deadline") {
-		t.Logf("got error: %v (expected timeout/deadline)", err)
-	}
-}
-
-func TestClient_Query_InvalidRecordType(t *testing.T) {
-	client := NewClient(5*time.Second, "8.8.8.8:53")
-	ctx := context.Background()
-
-	_, err := client.Query(ctx, "example.com", "INVALID")
-	if err == nil {
-		t.Error("expected error for invalid record type")
-	}
-}
-
-func TestClient_Query_CustomNameserver(t *testing.T) {
-	client := NewClient(10*time.Second, "1.1.1.1:53")
-	ctx := context.Background()
-
-	resp, err := client.Query(ctx, "example.com", "A")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if resp.Nameserver != "1.1.1.1:53" {
-		t.Errorf("expected nameserver '1.1.1.1:53', got %s", resp.Nameserver)
-	}
-
-	if len(resp.Records) == 0 {
-		t.Error("expected at least one A record")
+	address := startDNSServer(t, func(mdns.ResponseWriter, *mdns.Msg) {})
+	if _, err := NewClient(20*time.Millisecond, address).Query(context.Background(), "example.com", "A"); err == nil {
+		t.Fatal("expected timeout")
 	}
 }
