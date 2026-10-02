@@ -26,6 +26,11 @@ func NewClient(timeout time.Duration) *Client {
 }
 
 func (c *Client) Fetch(ctx context.Context, host, port string) (*Response, error) {
+	if c.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
 	address := net.JoinHostPort(host, port)
 
 	slog.Debug("connecting to TLS server", "address", address)

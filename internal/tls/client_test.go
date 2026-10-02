@@ -2,187 +2,114 @@ package tls
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"net"
-	"strings"
 	"testing"
 	"time"
 )
 
-func TestNewClient(t *testing.T) {
-	timeout := 5 * time.Second
-	client := NewClient(timeout)
-
-	if client == nil {
-		t.Fatal("expected non-nil client")
-	}
-
-	if client.timeout != timeout {
-		t.Errorf("expected timeout %v, got %v", timeout, client.timeout)
-	}
-}
-
-func TestClient_Fetch_Success(t *testing.T) {
-	client := NewClient(10 * time.Second)
-	ctx := context.Background()
-
-	resp, err := client.Fetch(ctx, "example.com", "443")
+func TestClientFetch(t *testing.T) {
+	host, port := startTLSServer(t, nil)
+	resp, err := NewClient(time.Second).Fetch(context.Background(), host, port)
 	if err != nil {
-		t.Fatalf("Fetch failed: %v", err)
+		t.Fatal(err)
 	}
-
-	if resp.Host != "example.com" {
-		t.Errorf("expected host 'example.com', got %s", resp.Host)
+	if resp.Host != host || resp.Port != port || resp.TLSVersion == "" || resp.CipherSuite == "" {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
-
-	if resp.Port != "443" {
-		t.Errorf("expected port '443', got %s", resp.Port)
-	}
-
-	if resp.TLSVersion == "" {
-		t.Error("expected non-empty TLS version")
-	}
-
-	if !strings.HasPrefix(resp.TLSVersion, "TLS") {
-		t.Errorf("expected TLS version to start with 'TLS', got %s", resp.TLSVersion)
-	}
-
-	if resp.CipherSuite == "" {
-		t.Error("expected non-empty cipher suite")
-	}
-
 	if len(resp.Certificates) == 0 {
-		t.Error("expected at least one certificate")
+		t.Fatal("missing certificates")
 	}
-
 	cert := resp.Certificates[0]
-	if cert.Subject.CommonName == "" {
-		t.Error("expected certificate to have common name")
-	}
-
-	if cert.NotBefore.IsZero() {
-		t.Error("expected certificate to have NotBefore date")
-	}
-
-	if cert.NotAfter.IsZero() {
-		t.Error("expected certificate to have NotAfter date")
-	}
-
-	if cert.SerialNumber == "" {
-		t.Error("expected certificate to have serial number")
+	if cert.NotBefore.IsZero() || cert.NotAfter.IsZero() || cert.SerialNumber == "" || cert.PublicKeySize == 0 {
+		t.Fatalf("missing certificate details: %+v", cert)
 	}
 }
 
-func TestClient_Fetch_InvalidHost(t *testing.T) {
-	client := NewClient(5 * time.Second)
-	ctx := context.Background()
-
-	_, err := client.Fetch(ctx, "invalid-host-that-does-not-exist.local", "443")
-	if err == nil {
-		t.Error("expected error for invalid host")
+func TestClientFetchHandshakeDeadline(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		timeout       time.Duration
+		parentTimeout time.Duration
+		parentExpires bool
+	}{
+		{"client timeout", 20 * time.Millisecond, time.Second, false},
+		{"parent deadline", time.Second, 20 * time.Millisecond, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			host, port := startStalledServer(t)
+			ctx, cancel := context.WithTimeout(context.Background(), tt.parentTimeout)
+			defer cancel()
+			_, err := NewClient(tt.timeout).Fetch(ctx, host, port)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("expected deadline error, got %v", err)
+			}
+			if (ctx.Err() != nil) != tt.parentExpires {
+				t.Fatalf("client timeout did not bound the handshake: parent error=%v", ctx.Err())
+			}
+		})
 	}
 }
 
-func TestClient_Fetch_Timeout(t *testing.T) {
-	client := NewClient(1 * time.Millisecond)
-	ctx := context.Background()
-
-	_, err := client.Fetch(ctx, "example.com", "443")
-	if err == nil {
-		t.Error("expected timeout error")
+func TestClientFetchCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewClient(time.Second).Fetch(ctx, "127.0.0.1", "443")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
 	}
+}
 
-	if !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "deadline") {
-		t.Errorf("expected timeout/deadline error, got: %v", err)
+func TestClientFetchConnectionError(t *testing.T) {
+	_, err := NewClient(time.Second).Fetch(context.Background(), "127.0.0.1", "invalid-port")
+	if err == nil {
+		t.Fatal("expected connection error")
 	}
 }
 
 func TestParseCertificate(t *testing.T) {
-	client := NewClient(5 * time.Second)
-
 	testCert := &x509.Certificate{
-		SerialNumber: nil,
-		Subject: pkix.Name{
-			CommonName:         "example.com",
-			Organization:       []string{"Example Org"},
-			OrganizationalUnit: []string{"IT"},
-			Country:            []string{"US"},
-			Province:           []string{"CA"},
-			Locality:           []string{"San Francisco"},
-		},
-		Issuer: pkix.Name{
-			CommonName:   "Example CA",
-			Organization: []string{"Example CA Org"},
-		},
-		NotBefore:          time.Now().Add(-24 * time.Hour),
-		NotAfter:           time.Now().Add(365 * 24 * time.Hour),
+		Subject:            pkix.Name{CommonName: "example.com", Organization: []string{"Example Org"}},
+		Issuer:             pkix.Name{CommonName: "Example CA"},
+		NotBefore:          time.Now().Add(-time.Hour),
+		NotAfter:           time.Now().Add(time.Hour),
 		SignatureAlgorithm: x509.SHA256WithRSA,
 		PublicKeyAlgorithm: x509.RSA,
 		DNSNames:           []string{"example.com", "www.example.com"},
-		IsCA:               false,
 	}
-
-	cert := client.parseCertificate(testCert)
-
-	if cert.Subject.CommonName != "example.com" {
-		t.Errorf("expected CN 'example.com', got %s", cert.Subject.CommonName)
-	}
-
-	if len(cert.Subject.Organization) != 1 || cert.Subject.Organization[0] != "Example Org" {
-		t.Errorf("expected organization 'Example Org', got %v", cert.Subject.Organization)
-	}
-
-	if cert.Issuer.CommonName != "Example CA" {
-		t.Errorf("expected issuer CN 'Example CA', got %s", cert.Issuer.CommonName)
-	}
-
-	if len(cert.DNSNames) != 2 {
-		t.Errorf("expected 2 DNS names, got %d", len(cert.DNSNames))
+	cert := NewClient(time.Second).parseCertificate(testCert)
+	if cert.Subject.CommonName != "example.com" || cert.Issuer.CommonName != "Example CA" || len(cert.DNSNames) != 2 || cert.SerialNumber != "" {
+		t.Fatalf("unexpected parsed certificate: %+v", cert)
 	}
 }
 
-func TestClient_Fetch_WithPort(t *testing.T) {
-	client := NewClient(10 * time.Second)
-	ctx := context.Background()
-
-	resp, err := client.Fetch(ctx, "example.com", "443")
+func startStalledServer(t *testing.T) (string, string) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("Fetch failed: %v", err)
+		t.Fatal(err)
 	}
-
-	if resp.Port != "443" {
-		t.Errorf("expected port '443', got %s", resp.Port)
-	}
-}
-
-func TestDialContext(t *testing.T) {
-	client := NewClient(5 * time.Second)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, err := net.DialTimeout("tcp", "example.com:443", client.timeout)
-	if err != nil {
-		t.Fatalf("dial failed: %v", err)
-	}
-	defer func() {
-		_ = conn.Close()
+	release := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		<-release
 	}()
-
-	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName:         "example.com",
-		InsecureSkipVerify: true,
+	t.Cleanup(func() {
+		close(release)
+		_ = listener.Close()
+		<-done
 	})
-
-	err = tlsConn.HandshakeContext(ctx)
+	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
-		t.Fatalf("TLS handshake failed: %v", err)
+		t.Fatal(err)
 	}
-
-	state := tlsConn.ConnectionState()
-	if len(state.PeerCertificates) == 0 {
-		t.Error("expected peer certificates")
-	}
+	return host, port
 }
