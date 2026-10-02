@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	httpinfo "watchr/internal/http"
-	"watchr/internal/output"
+	httpinfo "github.com/flavioheleno/watchr/internal/http"
+	"github.com/flavioheleno/watchr/internal/output"
 )
 
 func NewHTTPCommand() *cobra.Command {

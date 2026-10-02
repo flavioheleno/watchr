@@ -1,4 +1,4 @@
-module watchr
+module github.com/flavioheleno/watchr
 
 go 1.25.4
 

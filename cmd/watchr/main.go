@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"watchr/internal/cmd"
+	"github.com/flavioheleno/watchr/internal/cmd"
 )
 
 func main() {

@@ -68,7 +68,7 @@ func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "watchr/1.0")
+	req.Header.Set("User-Agent", "github.com/flavioheleno/watchr/1.0")
 
 	var timingData *requestTimings
 	if c.showTimings {

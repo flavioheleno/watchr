@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"watchr/internal/rdap"
+	"github.com/flavioheleno/watchr/internal/rdap"
 )
 
 func TestDomainCommandQueries(t *testing.T) {

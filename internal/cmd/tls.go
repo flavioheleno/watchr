@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"watchr/internal/output"
-	tlsinfo "watchr/internal/tls"
+	"github.com/flavioheleno/watchr/internal/output"
+	tlsinfo "github.com/flavioheleno/watchr/internal/tls"
 )
 
 func NewTLSCommand() *cobra.Command {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	dnsinfo "watchr/internal/dns"
-	"watchr/internal/output"
+	dnsinfo "github.com/flavioheleno/watchr/internal/dns"
+	"github.com/flavioheleno/watchr/internal/output"
 )
 
 func NewDNSCommand() *cobra.Command {

@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"watchr/internal/output"
-	"watchr/internal/rdap"
-	"watchr/internal/whois"
+	"github.com/flavioheleno/watchr/internal/output"
+	"github.com/flavioheleno/watchr/internal/rdap"
+	"github.com/flavioheleno/watchr/internal/whois"
 )
 
 func NewDomainCommand() *cobra.Command {

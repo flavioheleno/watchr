@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	dnsinfo "watchr/internal/dns"
-	httpinfo "watchr/internal/http"
-	"watchr/internal/rdap"
-	tlsinfo "watchr/internal/tls"
+	dnsinfo "github.com/flavioheleno/watchr/internal/dns"
+	httpinfo "github.com/flavioheleno/watchr/internal/http"
+	"github.com/flavioheleno/watchr/internal/rdap"
+	tlsinfo "github.com/flavioheleno/watchr/internal/tls"
 )
 
 func TestNewFormatter(t *testing.T) {
