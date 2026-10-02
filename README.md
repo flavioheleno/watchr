@@ -15,6 +15,9 @@ A modern CLI tool for retrieving domain registration details, TLS certificate in
 - **Multiple Output Formats** - Text and JSON output support
 - **Structured Logging** - Built-in verbose mode for debugging
 
+HTTP JSON output preserves header values as arrays, including repeated
+`Set-Cookie` headers. Text output prints each header value on its own line.
+
 ## Installation
 
 ### From Source

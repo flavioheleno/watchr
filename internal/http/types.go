@@ -1,6 +1,7 @@
 package httpinfo
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -14,15 +15,15 @@ type Timings struct {
 }
 
 type Response struct {
-	URL              string            `json:"url"`
-	StatusCode       int               `json:"statusCode"`
-	Status           string            `json:"status"`
-	Headers          map[string]string `json:"headers"`
-	ContentLength    int64             `json:"contentLength"`
-	TransferEncoding []string          `json:"transferEncoding,omitempty"`
-	Duration         time.Duration     `json:"duration"`
-	Timings          *Timings          `json:"timings,omitempty"`
-	TLSVersion       string            `json:"tlsVersion,omitempty"`
-	TLSCipherSuite   string            `json:"tlsCipherSuite,omitempty"`
-	RedirectChain    []string          `json:"redirectChain,omitempty"`
+	URL              string        `json:"url"`
+	StatusCode       int           `json:"statusCode"`
+	Status           string        `json:"status"`
+	Headers          http.Header   `json:"headers"`
+	ContentLength    int64         `json:"contentLength"`
+	TransferEncoding []string      `json:"transferEncoding,omitempty"`
+	Duration         time.Duration `json:"duration"`
+	Timings          *Timings      `json:"timings,omitempty"`
+	TLSVersion       string        `json:"tlsVersion,omitempty"`
+	TLSCipherSuite   string        `json:"tlsCipherSuite,omitempty"`
+	RedirectChain    []string      `json:"redirectChain,omitempty"`
 }

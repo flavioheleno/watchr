@@ -203,9 +203,9 @@ func TestFormatter_OutputHTTP_Text(t *testing.T) {
 		Status:        "200 OK",
 		ContentLength: 1234,
 		Duration:      100 * time.Millisecond,
-		Headers: map[string]string{
-			"Content-Type": "text/html",
-			"Server":       "nginx",
+		Headers: map[string][]string{
+			"Content-Type": {"text/html"},
+			"Server":       {"nginx"},
 		},
 		TLSVersion:     "TLS 1.3",
 		TLSCipherSuite: "TLS_AES_128_GCM_SHA256",
@@ -241,8 +241,8 @@ func TestFormatter_OutputHTTP_JSON(t *testing.T) {
 		Status:        "200 OK",
 		ContentLength: 1234,
 		Duration:      100 * time.Millisecond,
-		Headers: map[string]string{
-			"Content-Type": "text/html",
+		Headers: map[string][]string{
+			"Content-Type": {"text/html"},
 		},
 	}
 
@@ -599,5 +599,25 @@ func TestFormatterTLSScanCoverage(t *testing.T) {
 		if !strings.Contains(buf.String(), text) {
 			t.Fatalf("missing %q in %s", text, buf.String())
 		}
+	}
+}
+
+func TestFormatterHTTPRepeatedHeaders(t *testing.T) {
+	var resp httpinfo.Response
+	if err := json.Unmarshal([]byte(`{"url":"http://example.com","headers":{"Set-Cookie":["a=1","b=2"]}}`), &resp); err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{"text", "json"} {
+		t.Run(format, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := NewFormatter(format, &buf).OutputHTTP(&resp); err != nil {
+				t.Fatal(err)
+			}
+			for _, value := range []string{"a=1", "b=2"} {
+				if !strings.Contains(buf.String(), value) {
+					t.Fatalf("missing %s in %s", value, buf.String())
+				}
+			}
+		})
 	}
 }

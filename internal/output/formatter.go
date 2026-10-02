@@ -345,9 +345,11 @@ func (f *Formatter) outputHTTPText(resp *httpinfo.Response) error {
 		if err := writeLine(f.writer, "\nHeaders:\n"); err != nil {
 			return err
 		}
-		for key, value := range resp.Headers {
-			if err := writeLine(f.writer, "  %s: %s\n", key, value); err != nil {
-				return err
+		for key, values := range resp.Headers {
+			for _, value := range values {
+				if err := writeLine(f.writer, "  %s: %s\n", key, value); err != nil {
+					return err
+				}
 			}
 		}
 	}

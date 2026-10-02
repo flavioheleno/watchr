@@ -109,18 +109,12 @@ func (c *Client) Fetch(ctx context.Context, url string) (*Response, error) {
 		URL:              resp.Request.URL.String(),
 		StatusCode:       resp.StatusCode,
 		Status:           resp.Status,
-		Headers:          make(map[string]string),
+		Headers:          resp.Header.Clone(),
 		ContentLength:    resp.ContentLength,
 		TransferEncoding: resp.TransferEncoding,
 		Duration:         duration,
 		Timings:          timings,
 		RedirectChain:    redirectChainCopy,
-	}
-
-	for key, values := range resp.Header {
-		if len(values) > 0 {
-			response.Headers[key] = values[0]
-		}
 	}
 
 	if resp.TLS != nil {

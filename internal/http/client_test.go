@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/http/httptrace"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -84,6 +85,21 @@ func TestClientFetchTimings(t *testing.T) {
 	}
 }
 
+func TestClientFetchRepeatedHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "a=1")
+		w.Header().Add("Set-Cookie", "b=2")
+	}))
+	defer server.Close()
+	resp, err := NewClient(time.Second, false, false).Fetch(context.Background(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(resp.Headers["Set-Cookie"], []string{"a=1", "b=2"}) {
+		t.Fatalf("repeated headers lost: %v", resp.Headers)
+	}
+}
+
 func TestClient_Fetch_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -111,12 +127,12 @@ func TestClient_Fetch_Success(t *testing.T) {
 		t.Errorf("expected status '200 OK', got %s", resp.Status)
 	}
 
-	if resp.Headers["Content-Type"] != "text/html" {
-		t.Errorf("expected Content-Type header 'text/html', got %s", resp.Headers["Content-Type"])
+	if resp.Headers.Get("Content-Type") != "text/html" {
+		t.Errorf("expected Content-Type header 'text/html', got %s", resp.Headers.Get("Content-Type"))
 	}
 
-	if resp.Headers["X-Custom-Header"] != "test-value" {
-		t.Errorf("expected X-Custom-Header 'test-value', got %s", resp.Headers["X-Custom-Header"])
+	if resp.Headers.Get("X-Custom-Header") != "test-value" {
+		t.Errorf("expected X-Custom-Header 'test-value', got %s", resp.Headers.Get("X-Custom-Header"))
 	}
 
 	if resp.ContentLength != 13 {
